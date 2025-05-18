@@ -175,7 +175,7 @@ async function fetchApi<T>(
     }
     
     if (!response.ok) {
-      const errorMessage = data.error || `Error: ${response.status}`;
+      const errorMessage = data.error || data.message || `Error: ${response.status}`;
       const apiError = new Error(errorMessage) as ApiError;
       apiError.status = response.status;
       
@@ -190,11 +190,59 @@ async function fetchApi<T>(
       throw apiError;
     }
     
-    return { 
-      success: true, 
-      data: data.data || data, 
-      message: data.message 
-    };
+    // 处理后端返回的各种格式，确保返回统一的API响应格式
+    let processedData;
+    
+    // 标准响应格式: {success: boolean, data: T, message: string}
+    if (data.hasOwnProperty('success')) {
+      processedData = data;
+    } 
+    // 嵌套结构的响应: {data: {user: {...}}}
+    else if (data.hasOwnProperty('data')) {
+      // 检查data是否为空对象或null
+      if (!data.data || (typeof data.data === 'object' && Object.keys(data.data).length === 0)) {
+        processedData = {
+          success: false,
+          error: "服务器返回空数据",
+          message: data.message || "请求成功但返回了空数据",
+          data: data.data
+        };
+      } else {
+        processedData = {
+          success: true,
+          data: data.data,
+          message: data.message || 'Success'
+        };
+      }
+    } 
+    // 直接响应结构: {user: {...}} 
+    else {
+      // 检查是否至少有一个有效的数据字段
+      const hasValidData = Object.keys(data).some(key => {
+        // 忽略常见的元数据字段
+        if (['message', 'error', 'status', 'success', 'code'].includes(key)) {
+          return false;
+        }
+        return data[key] !== null && data[key] !== undefined;
+      });
+
+      if (hasValidData) {
+        processedData = {
+          success: true,
+          data: data,
+          message: data.message || 'Success'
+        };
+      } else {
+        processedData = {
+          success: false,
+          error: data.error || "数据格式无效",
+          message: data.message || "响应中没有有效数据",
+          data: {}
+        };
+      }
+    }
+    
+    return processedData;
   } catch (error: any) {
     // 检查是否是网络错误
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {

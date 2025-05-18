@@ -10,6 +10,8 @@ interface User {
   username?: string;
   user_type: string;
   avatar?: string;
+  avatar_url?: string;
+  name?: string;
   [key: string]: any;
 }
 
@@ -72,17 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (response.data?.user) {
             console.log("User is authenticated:", response.data.user);
             try {
-              // 先验证user对象有基本必须的字段
-              if (!response.data.user.uuid) {
-                console.error("User data missing required uuid field:", response.data.user);
+              // 使用normalizeUserData函数处理用户数据
+              const normalizedUser = normalizeUserData(response.data.user);
+              
+              if (normalizedUser) {
+                console.log("Normalized user data:", normalizedUser);
+                setUser(normalizedUser);
+              } else {
+                console.error("User data missing required fields:", response.data.user);
                 toast.error("用户数据缺少必要信息，请重新登录");
                 removeAuthToken();
                 setIsLoading(false);
                 return;
               }
-              
-              // 设置用户状态
-              setUser(response.data.user);
             } catch (parseError) {
               console.error("Error parsing user data:", parseError, response.data.user);
               // 不要立即退出登录，让用户可以尝试刷新页面
@@ -130,11 +134,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Login response:", response);
       
       if (response.data?.user) {
-        setUser(response.data.user);
-        console.log("Login successful, user:", response.data.user);
+        // 使用normalizeUserData处理用户数据
+        const normalizedUser = normalizeUserData(response.data.user);
         
-        toast.success(response.message || "Login successful");
-        return response.data.user;
+        if (normalizedUser) {
+          setUser(normalizedUser);
+          console.log("Login successful, normalized user:", normalizedUser);
+          
+          toast.success(response.message || "Login successful");
+          return normalizedUser;
+        } else {
+          throw new Error("用户数据格式无效，请联系管理员");
+        }
       } 
       
       throw new Error(response.error || "Login failed");
@@ -157,11 +168,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Register response:", response);
       
       if (response.data?.user) {
-        setUser(response.data.user);
-        console.log("Registration successful, user:", response.data.user);
+        // 使用normalizeUserData处理用户数据
+        const normalizedUser = normalizeUserData(response.data.user);
         
-        toast.success(response.message || "Registration successful");
-        return response.data.user;
+        if (normalizedUser) {
+          setUser(normalizedUser);
+          console.log("Registration successful, normalized user:", normalizedUser);
+          
+          toast.success(response.message || "Registration successful");
+          return normalizedUser;
+        } else {
+          throw new Error("注册成功但用户数据格式无效，请联系管理员");
+        }
       }
       
       throw new Error(response.error || "Registration failed");
@@ -199,9 +217,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Update user data function
   const updateUser = (userData: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...userData };
-      console.log("Updating user data:", updatedUser);
-      setUser(updatedUser);
+      try {
+        // 合并当前用户数据和更新数据
+        const updatedUserData = { ...user, ...userData };
+        
+        // 规范化更新后的用户数据
+        const normalizedUser = normalizeUserData(updatedUserData);
+        
+        if (normalizedUser) {
+          console.log("Updating user data:", normalizedUser);
+          setUser(normalizedUser);
+        } else {
+          console.error("Invalid user data after update:", updatedUserData);
+          // 仍然更新，但记录错误
+          setUser(updatedUserData as User);
+        }
+      } catch (error) {
+        console.error("Error updating user data:", error);
+        // 简单更新，即使数据可能不是最规范的
+        const updatedUser = { ...user, ...userData };
+        setUser(updatedUser);
+      }
+    } else {
+      console.warn("Attempted to update user data, but no user is logged in");
     }
   };
 
@@ -220,4 +258,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+// 标准化用户数据的辅助函数
+function normalizeUserData(userData: any): User | null {
+  if (!userData) return null;
+  
+  try {
+    // 确保必要字段存在
+    if (!userData.uuid) {
+      console.error("User data missing required uuid field:", userData);
+      return null;
+    }
+    
+    // 标准化用户数据，处理字段名不一致的问题
+    return {
+      ...userData,
+      // 确保头像字段存在，优先使用avatar，否则使用avatar_url
+      avatar: userData.avatar || userData.avatar_url,
+      avatar_url: userData.avatar_url || userData.avatar,
+      // 确保用户类型字段存在
+      user_type: userData.user_type || userData.userType || 'user',
+      // 确保用户名字段存在
+      username: userData.username || userData.user_name,
+      // 确保名称字段存在
+      name: userData.name || userData.full_name
+    };
+  } catch (error) {
+    console.error("Error normalizing user data:", error);
+    return null;
+  }
 } 

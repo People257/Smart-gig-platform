@@ -15,24 +15,44 @@ import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { userApi } from "@/lib/api"
 
+// 技能对象类型定义
+interface Skill {
+  id?: number;
+  name: string;
+  created_at?: string;
+}
+
+// 个人资料类型定义
 interface ProfileData {
   username?: string;
   name?: string;
   bio?: string;
   location?: string;
   hourly_rate?: number;
-  skills?: string[];
+  skills?: Skill[] | string[];
   verified?: boolean;
+  is_identity_verified?: boolean;
   avatar?: string;
+  avatar_url?: string;
+  uuid?: string;
+  phone_number?: string;
+  email?: string;
+  created_at?: string;
+  user_type?: string;
   [key: string]: any;
 }
 
 export default function ProfilePage() {
+  // 使用认证上下文
   const { user: authUser, updateUser } = useAuth()
+  
+  // 状态管理
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileData, setProfileData] = useState<ProfileData>({})
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   // 表单状态
   const [name, setName] = useState("")
@@ -42,51 +62,101 @@ export default function ProfilePage() {
   const [skillInput, setSkillInput] = useState("")
   const [skills, setSkills] = useState<string[]>([])
 
+  // 获取用户资料
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
         setIsLoading(true)
+        setError(null)
         console.log("获取用户资料...")
-        const { success, data, error } = await userApi.getProfile()
         
-        if (success && data?.user) {
-          console.log("用户资料数据:", data.user)
-          const userData = data.user
-          setProfileData(userData)
+        const response = await userApi.getProfile()
+        console.log("API返回的完整响应:", response)
+        
+        if (response.success && response.data) {
+          // Check if we have actual user data in response
+          const userData = response.data.user || response.data
           
-          // 初始化表单状态
-          setName(userData.name || '')
-          setBio(userData.bio || '')
-          setLocation(userData.location || '')
-          setHourlyRate(userData.hourly_rate?.toString() || '')
+          // Validate we have something to work with
+          if (!userData || (typeof userData === 'object' && Object.keys(userData).length === 0)) {
+            console.error("获取用户资料失败: 服务器返回空数据")
+            setError("获取用户资料失败: 服务器返回空数据")
+            toast.error("获取用户资料失败: 服务器返回空数据")
+            setProfileData({})
+            return
+          }
           
-          // 处理技能数据 - 支持两种可能的后端返回格式
-          if (userData.skills) {
-            // 如果skills是对象数组 [{id: 1, name: "技能名"}]
-            if (Array.isArray(userData.skills) && userData.skills.length > 0 && typeof userData.skills[0] === 'object') {
-              const skillNames = userData.skills.map(skill => skill.name || '').filter(Boolean)
-              console.log("解析的技能名称:", skillNames)
-              setSkills(skillNames)
-            } 
-            // 如果skills是字符串数组 ["技能1", "技能2"]
-            else if (Array.isArray(userData.skills)) {
-              console.log("已有技能列表:", userData.skills)
-              setSkills(userData.skills)
+          console.log("获取到的用户数据:", userData)
+          
+          try {
+            // 将用户数据规范化，处理字段命名不一致的问题
+            const normalizedData: ProfileData = {
+              ...userData,
+              // 处理头像字段
+              avatar: userData.avatar_url || userData.avatar,
+              // 确保verified字段一致
+              verified: userData.is_identity_verified || userData.verified || false,
+              // 确保有名称字段
+              name: userData.name || userData.full_name || userData.username,
             }
-            else {
-              console.log("未知技能格式:", userData.skills)
+            
+            console.log("规范化后的用户数据:", normalizedData)
+            setProfileData(normalizedData)
+            
+            // 设置表单状态
+            setName(normalizedData.name || '')
+            setBio(normalizedData.bio || '')
+            setLocation(normalizedData.location || '')
+            setHourlyRate(
+              typeof normalizedData.hourly_rate === 'number' 
+                ? normalizedData.hourly_rate.toString() 
+                : ''
+            )
+            
+            // 处理技能数据 - 可能是对象数组或字符串数组
+            if (normalizedData.skills) {
+              console.log("处理技能数据:", normalizedData.skills)
+              
+              if (Array.isArray(normalizedData.skills)) {
+                // 技能可能是对象数组或字符串数组
+                const processedSkills = normalizedData.skills.map(skill => {
+                  if (typeof skill === 'string') {
+                    return skill
+                  } else if (typeof skill === 'object' && skill !== null) {
+                    return skill.name || ''
+                  }
+                  return ''
+                }).filter(Boolean)
+                
+                console.log("处理后的技能列表:", processedSkills)
+                setSkills(processedSkills)
+              } else {
+                setSkills([])
+              }
+            } else {
               setSkills([])
             }
-          } else {
-            setSkills([])
+          } catch (parseError) {
+            console.error("解析用户数据出错:", parseError)
+            setError("数据解析错误")
+            toast.error("处理用户数据时出错")
+            
+            // 设置空数据，确保UI不会崩溃
+            setProfileData({})
           }
         } else {
-          console.error("获取用户资料失败:", error)
-          toast.error("获取用户资料失败: " + error)
+          console.error("获取用户资料失败:", response.error || response.message || "无响应数据")
+          const errorMessage = response.error || response.message || "获取用户资料失败，请刷新重试"
+          setError(errorMessage)
+          toast.error(errorMessage)
+          setProfileData({})
         }
-      } catch (error) {
-        console.error('获取用户资料失败:', error)
-        toast.error("获取资料失败，请稍后重试")
+      } catch (error: any) {
+        console.error("获取用户资料异常:", error)
+        const errorMessage = error.message || "网络错误，请检查连接后重试"
+        setError(errorMessage)
+        toast.error(errorMessage)
+        setProfileData({})
       } finally {
         setIsLoading(false)
       }
@@ -95,6 +165,14 @@ export default function ProfilePage() {
     fetchProfileData()
   }, [])
 
+  // 重试加载用户资料
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1)
+    setError(null)
+    setIsLoading(true)
+  }
+
+  // 添加技能
   const handleAddSkill = () => {
     if (skillInput.trim() && !skills.includes(skillInput.trim())) {
       setSkills([...skills, skillInput.trim()])
@@ -102,52 +180,63 @@ export default function ProfilePage() {
     }
   }
 
+  // 移除技能
   const handleRemoveSkill = (skill: string) => {
     setSkills(skills.filter((s) => s !== skill))
   }
 
+  // 保存个人资料
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      console.log("准备保存用户资料...");
+      console.log("准备保存用户资料...")
       
-      // 构建要更新的个人资料数据
+      // 根据后端接收的格式准备技能数据
+      // 如果后端期望的是对象数组格式 [{name: "技能名"}]
+      const formattedSkills = skills.map(skill => ({ name: skill }))
+      
       const updatedProfile = {
         name,
         bio,
         location,
         hourly_rate: hourlyRate ? parseFloat(hourlyRate) : undefined,
-        // 根据原始数据格式，决定如何提交skills
-        skills: profileData.skills && 
-               Array.isArray(profileData.skills) && 
-               profileData.skills.length > 0 && 
-               typeof profileData.skills[0] === 'object' 
-               ? skills.map(skillName => ({name: skillName})) // 如果原始数据是对象数组
-               : skills // 如果原始数据是字符串数组
+        skills: formattedSkills
       }
       
-      console.log("提交的资料数据:", updatedProfile);
-      const { success, data, error } = await userApi.updateProfile(updatedProfile)
+      console.log("提交的个人资料数据:", updatedProfile)
+      const response = await userApi.updateProfile(updatedProfile)
       
-      if (success && data?.user) {
-        console.log("更新成功的用户数据:", data.user);
-        setProfileData(data.user)
+      if (response.success && response.data?.user) {
+        console.log("更新成功，返回的用户数据:", response.data.user)
+        
+        // 更新本地状态和全局用户状态
+        const userData = response.data.user
+        setProfileData({
+          ...profileData,
+          ...userData,
+          // 确保头像字段一致
+          avatar: userData.avatar_url || userData.avatar || profileData.avatar,
+          // 技能已格式化，无需重新处理
+        })
+        
         // 更新全局用户状态
-        updateUser(data.user)
+        updateUser(userData)
+        
         toast.success("个人资料已更新")
         setIsEditing(false)
       } else {
-        console.error("保存资料失败:", error);
-        throw new Error(error || "保存资料失败")
+        console.error("保存资料失败:", response.error)
+        toast.error(response.error || "保存资料失败")
       }
     } catch (error: any) {
-      console.error("保存过程发生异常:", error);
+      console.error("保存资料异常:", error)
       toast.error(error.message || "保存失败，请稍后重试")
     } finally {
       setIsSaving(false)
     }
   }
 
+  // 上传头像
   const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files || event.target.files.length === 0) {
       return
@@ -158,28 +247,68 @@ export default function ProfilePage() {
       const formData = new FormData()
       formData.append('avatar', file)
       
-      const { success, data, error } = await userApi.uploadAvatar(formData)
+      const response = await userApi.uploadAvatar(formData)
       
-      if (success && data?.avatarUrl) {
-        // 更新个人资料中的头像
-        setProfileData({...profileData, avatar: data.avatarUrl})
+      if (response.success && response.data) {
+        // 处理各种可能的返回字段名
+        const avatarUrl = response.data.avatarUrl || response.data.avatar_url || response.data.avatar
+        
+        if (!avatarUrl) {
+          throw new Error("服务器返回的数据中没有有效的头像URL")
+        }
+        
+        // 更新本地状态
+        setProfileData({
+          ...profileData,
+          avatar: avatarUrl,
+          avatar_url: avatarUrl
+        })
+        
         // 更新全局用户状态
-        updateUser({avatar: data.avatarUrl})
+        updateUser({
+          avatar: avatarUrl,
+          avatar_url: avatarUrl
+        })
+        
         toast.success("头像已更新")
       } else {
-        throw new Error(error || "上传头像失败")
+        throw new Error(response.error || "上传头像失败")
       }
     } catch (error: any) {
+      console.error("上传头像失败:", error)
       toast.error(error.message || "上传失败，请稍后重试")
     }
   }
 
+  // 身份认证处理
   const handleVerifyIdentity = () => {
-    // 这里实现实名认证功能
     toast({
       title: "功能开发中",
       description: "实名认证功能即将上线",
     })
+  }
+
+  // 如果出现错误，显示错误提示
+  if (error && !isLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold tracking-tight">个人资料</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="rounded-full bg-red-100 p-3 mb-4">
+                <X className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-medium">加载资料失败</h3>
+              <p className="text-sm text-muted-foreground mt-1 mb-4">{error}</p>
+              <Button onClick={() => window.location.reload()}>
+                刷新页面
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -212,6 +341,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="grid gap-6">
+        {/* 基本信息卡片 */}
         <Card>
           <CardHeader>
             <CardTitle>基本信息</CardTitle>
@@ -257,9 +387,10 @@ export default function ProfilePage() {
             ) : (
               <>
                 <div className="flex flex-col sm:flex-row gap-6 items-start">
+                  {/* 头像区域 */}
                   <div className="relative">
                     <Avatar className="h-24 w-24">
-                      <AvatarImage src={profileData.avatar || "/placeholder.svg?height=96&width=96"} alt="头像" />
+                      <AvatarImage src={profileData.avatar || profileData.avatar_url || "/placeholder.svg?height=96&width=96"} alt="头像" />
                       <AvatarFallback>{name?.charAt(0) || profileData.username?.charAt(0) || "用户"}</AvatarFallback>
                     </Avatar>
                     {isEditing && (
@@ -283,11 +414,18 @@ export default function ProfilePage() {
                       </>
                     )}
                   </div>
+                  
+                  {/* 姓名和简介 */}
                   <div className="space-y-4 flex-1">
                     <div className="space-y-2">
                       <Label htmlFor="name">姓名</Label>
                       {isEditing ? (
-                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+                        <Input 
+                          id="name" 
+                          value={name} 
+                          onChange={(e) => setName(e.target.value)} 
+                          placeholder="请输入您的姓名"
+                        />
                       ) : (
                         <div className="text-lg font-medium">{name || profileData.name || "未设置"}</div>
                       )}
@@ -309,6 +447,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {/* 位置和时薪 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="location">所在地区</Label>
@@ -352,6 +491,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {/* 技能标签 */}
                 <div className="space-y-2">
                   <Label>技能标签</Label>
                   {isEditing ? (
@@ -395,13 +535,6 @@ export default function ProfilePage() {
                             {skill}
                           </Badge>
                         ))
-                      ) : profileData.skills && Array.isArray(profileData.skills) && profileData.skills.length > 0 ? (
-                        // 处理原始profileData中的skills，支持对象数组或字符串数组
-                        profileData.skills.map((skill, index) => (
-                          <Badge key={index} variant="secondary">
-                            {typeof skill === 'object' && skill.name ? skill.name : skill}
-                          </Badge>
-                        ))
                       ) : (
                         <p className="text-sm text-muted-foreground">暂无技能标签</p>
                       )}
@@ -413,6 +546,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* 实名认证卡片 */}
         <Card>
           <CardHeader>
             <CardTitle>实名认证</CardTitle>
@@ -439,14 +573,14 @@ export default function ProfilePage() {
                   </div>
                   <Badge 
                     variant="outline" 
-                    className={profileData.verified ? 
+                    className={profileData.verified || profileData.is_identity_verified ? 
                       "bg-green-100 text-green-800 hover:bg-green-100" : 
                       "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"}
                   >
-                    {profileData.verified ? "已认证" : "待认证"}
+                    {profileData.verified || profileData.is_identity_verified ? "已认证" : "待认证"}
                   </Badge>
                 </div>
-                {!profileData.verified && (
+                {!(profileData.verified || profileData.is_identity_verified) && (
                   <Button className="mt-4" onClick={handleVerifyIdentity}>
                     <Upload className="mr-2 h-4 w-4" />
                     上传证件
@@ -457,6 +591,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* 作品集卡片 */}
         <Card>
           <CardHeader>
             <CardTitle>作品集</CardTitle>
@@ -473,19 +608,19 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {profileData.portfolios && profileData.portfolios.length > 0 ? (
-                  // 显示作品
+                {profileData.portfolios && Array.isArray(profileData.portfolios) && profileData.portfolios.length > 0 ? (
+                  // 有作品时显示作品
                   profileData.portfolios.map((portfolio, index) => (
                     <div key={index} className="border rounded-lg p-2 aspect-square overflow-hidden">
                       <img 
-                        src={portfolio.image} 
-                        alt={portfolio.title} 
+                        src={portfolio.image || "/placeholder.svg"} 
+                        alt={portfolio.title || "作品"} 
                         className="w-full h-full object-cover"
                       />
                     </div>
                   ))
                 ) : (
-                  // 添加作品按钮
+                  // 没有作品时显示添加按钮
                   <div className="border rounded-lg p-2 aspect-square flex items-center justify-center bg-muted">
                     <Button variant="ghost" className="h-full w-full flex flex-col gap-2">
                       <Plus className="h-6 w-6" />
@@ -498,6 +633,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* 评价卡片 */}
         <Card>
           <CardHeader>
             <CardTitle>评价与评分</CardTitle>
@@ -505,181 +641,9 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="space-y-6">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="flex flex-col items-center">
-                    <Skeleton className="h-8 w-16" />
-                    <Skeleton className="h-4 w-24 mt-2" />
-                    <Skeleton className="h-4 w-16 mt-1" />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {Array(5)
-                      .fill(0)
-                      .map((_, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Skeleton className="h-4 w-8" />
-                          <Skeleton className="h-2 flex-1" />
-                          <Skeleton className="h-4 w-8" />
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <Tabs defaultValue="all">
-                  <TabsList>
-                    <TabsTrigger value="all">全部评价</TabsTrigger>
-                    <TabsTrigger value="positive">好评</TabsTrigger>
-                    <TabsTrigger value="negative">差评</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="all" className="space-y-4 mt-4">
-                    {Array(2)
-                      .fill(0)
-                      .map((_, i) => (
-                        <div key={i} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="flex items-center gap-2">
-                              <Skeleton className="h-8 w-8 rounded-full" />
-                              <div>
-                                <Skeleton className="h-4 w-16" />
-                                <Skeleton className="h-3 w-24 mt-1" />
-                              </div>
-                            </div>
-                            <Skeleton className="h-4 w-24" />
-                          </div>
-                          <Skeleton className="h-4 w-full mt-2" />
-                        </div>
-                      ))}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            ) : profileData.reviews && profileData.reviews.length > 0 ? (
-              <div>
-                {/* 评分统计 */}
-                <div className="flex items-center gap-4 mb-6">
-                  {/* 平均分 */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-3xl font-bold">{profileData.rating || "0"}</div>
-                    <div className="flex items-center text-yellow-500">
-                      {Array(5).fill(0).map((_, i) => (
-                        <Star key={i} 
-                          className={`h-4 w-4 ${i < Math.round(profileData.rating || 0) ? 'fill-current' : ''}`} 
-                        />
-                      ))}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{profileData.reviews.length} 条评价</p>
-                  </div>
-                  
-                  {/* 评分分布 */}
-                  <div className="flex-1 space-y-2">
-                    {[5, 4, 3, 2, 1].map(stars => {
-                      const count = profileData.reviews.filter(r => r.rating === stars).length;
-                      const percentage = profileData.reviews.length ? Math.round(count / profileData.reviews.length * 100) : 0;
-                      
-                      return (
-                        <div key={stars} className="flex items-center gap-2">
-                          <span className="text-sm w-8">{stars}星</span>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden flex-1">
-                            <div 
-                              className="bg-yellow-500 h-full" 
-                              style={{ width: `${percentage}%` }}
-                            />
-                          </div>
-                          <span className="text-sm w-8">{percentage}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                
-                {/* 评价列表 */}
-                <Tabs defaultValue="all">
-                  <TabsList>
-                    <TabsTrigger value="all">全部评价</TabsTrigger>
-                    <TabsTrigger value="positive">好评</TabsTrigger>
-                    <TabsTrigger value="negative">差评</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="all" className="space-y-4 mt-4">
-                    {profileData.reviews.map(review => (
-                      <div key={review.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
-                              <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{review.reviewer.name}</p>
-                              <p className="text-xs text-muted-foreground">{review.created_at}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center text-yellow-500">
-                            {Array(5).fill(0).map((_, i) => (
-                              <Star key={i} 
-                                className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <p className="mt-2 text-sm">{review.content}</p>
-                      </div>
-                    ))}
-                  </TabsContent>
-                  <TabsContent value="positive" className="space-y-4 mt-4">
-                    {profileData.reviews
-                      .filter(review => review.rating >= 4)
-                      .map(review => (
-                        <div key={review.id} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
-                                <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium">{review.reviewer.name}</p>
-                                <p className="text-xs text-muted-foreground">{review.created_at}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center text-yellow-500">
-                              {Array(5).fill(0).map((_, i) => (
-                                <Star key={i} 
-                                  className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <p className="mt-2 text-sm">{review.content}</p>
-                        </div>
-                      ))}
-                  </TabsContent>
-                  <TabsContent value="negative" className="space-y-4 mt-4">
-                    {profileData.reviews
-                      .filter(review => review.rating < 4)
-                      .map(review => (
-                        <div key={review.id} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
-                                <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium">{review.reviewer.name}</p>
-                                <p className="text-xs text-muted-foreground">{review.created_at}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center text-yellow-500">
-                              {Array(5).fill(0).map((_, i) => (
-                                <Star key={i} 
-                                  className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <p className="mt-2 text-sm">{review.content}</p>
-                        </div>
-                      ))}
-                  </TabsContent>
-                </Tabs>
+              <div className="space-y-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -692,6 +656,20 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+
+        {/* 如果加载错误，显示重试按钮 */}
+        {error && (
+          <div className="flex flex-col items-center justify-center p-6 text-center space-y-4">
+            <div className="text-destructive font-medium">{error}</div>
+            <Button 
+              variant="outline" 
+              onClick={handleRetry}
+              disabled={isLoading}
+            >
+              {isLoading ? "加载中..." : "重试加载"}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
