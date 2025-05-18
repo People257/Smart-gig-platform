@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { authApi, userApi } from "./api";
+import { authApi, userApi, saveAuthToken, removeAuthToken, getAuthToken } from "./api";
 import { toast } from "sonner";
 
 // User type definition
@@ -26,9 +26,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  loginWithPhone: (phoneNumber: string, verificationCode: string) => Promise<boolean>;
-  register: (userType: "worker" | "employer", method: "username" | "phone", data: any) => Promise<boolean>;
+  login: (loginData: any) => Promise<User>;
+  register: (registerData: any) => Promise<User>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -38,9 +37,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
-  login: async () => false,
-  loginWithPhone: async () => false,
-  register: async () => false,
+  login: async () => { throw new Error("Not implemented"); },
+  register: async () => { throw new Error("Not implemented"); },
   logout: async () => {},
   updateUser: () => {},
 });
@@ -58,13 +56,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkAuth = async () => {
       try {
         setIsLoading(true);
-        const { success, data } = await userApi.getProfile();
         
-        if (success && data?.user) {
-          setUser(data.user);
+        // 首先检查是否有token存在
+        const hasToken = !!getAuthToken();
+        if (!hasToken) {
+          console.log("No auth token found, skipping profile fetch");
+          setIsLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Auth check failed:", error);
+        
+        console.log("Checking authentication status...");
+        try {
+          const response = await userApi.getProfile();
+          
+          if (response.data?.user) {
+            console.log("User is authenticated:", response.data.user);
+            setUser(response.data.user);
+          } else {
+            console.log("User profile not found, but keeping token");
+            // 不立即删除token，因为可能是临时网络问题
+            toast.error("无法加载用户资料，请稍后重试");
+          }
+        } catch (profileError: any) {
+          console.error("Profile fetch error:", profileError);
+          
+          // 只在特定情况下才删除token
+          if (profileError.status === 401 || 
+              profileError.message?.toLowerCase().includes('unauthorized') || 
+              profileError.message?.toLowerCase().includes('invalid token')) {
+            console.log("Token invalid, removing it");
+            removeAuthToken();
+            toast.error("登录已过期，请重新登录");
+          } else {
+            console.log("Network or server error, keeping token and user state");
+            // 临时网络问题或服务器错误，不删除token
+            toast.error("网络连接问题，请稍后重试");
+          }
+        }
+      } catch (error: any) {
+        console.error("Auth check failed (outer):", error);
+        // 这里不删除token，因为可能是程序错误而非权限问题
       } finally {
         setIsLoading(false);
       }
@@ -73,84 +104,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  // Login with username and password
-  const login = async (username: string, password: string) => {
+  // Login function that handles both username and phone methods
+  const login = async (loginData: any): Promise<User> => {
     try {
       setIsLoading(true);
-      const response = await authApi.login({
-        method: "username",
-        username,
-        password
-      });
+      console.log("Login attempt with data:", loginData);
       
-      if (response.success && response.data?.user) {
+      const response = await authApi.login(loginData);
+      console.log("Login response:", response);
+      
+      if (response.data?.user) {
         setUser(response.data.user);
-        toast.success(response.message || "登录成功");
-        return true;
-      } else {
-        toast.error(response.error || "登录失败");
-        return false;
-      }
-    } catch (error) {
+        console.log("Login successful, user:", response.data.user);
+        
+        toast.success(response.message || "Login successful");
+        return response.data.user;
+      } 
+      
+      throw new Error(response.error || "Login failed");
+    } catch (error: any) {
       console.error("Login failed:", error);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Login with phone and verification code
-  const loginWithPhone = async (phoneNumber: string, verificationCode: string) => {
-    try {
-      setIsLoading(true);
-      const response = await authApi.login({
-        method: "phone",
-        phone_number: phoneNumber,
-        verification_code: verificationCode
-      });
-      
-      if (response.success && response.data?.user) {
-        setUser(response.data.user);
-        toast.success(response.message || "登录成功");
-        return true;
-      } else {
-        toast.error(response.error || "登录失败");
-        return false;
-      }
-    } catch (error) {
-      console.error("Phone login failed:", error);
-      return false;
+      toast.error(error.message || "Login failed");
+      throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
   // Register function
-  const register = async (userType: "worker" | "employer", method: "username" | "phone", data: any) => {
+  const register = async (registerData: any): Promise<User> => {
     try {
       setIsLoading(true);
-      
-      const registerData = {
-        user_type: userType,
-        method,
-        ...method === "username" 
-          ? { username: data.username, password: data.password }
-          : { phone_number: data.phoneNumber, verification_code: data.verificationCode }
-      };
+      console.log("Register attempt with data:", registerData);
       
       const response = await authApi.register(registerData);
+      console.log("Register response:", response);
       
-      if (response.success && response.data?.user) {
+      if (response.data?.user) {
         setUser(response.data.user);
-        toast.success(response.message || "注册成功");
-        return true;
-      } else {
-        toast.error(response.error || "注册失败");
-        return false;
+        console.log("Registration successful, user:", response.data.user);
+        
+        toast.success(response.message || "Registration successful");
+        return response.data.user;
       }
-    } catch (error) {
+      
+      throw new Error(response.error || "Registration failed");
+    } catch (error: any) {
       console.error("Registration failed:", error);
-      return false;
+      toast.error(error.message || "Registration failed");
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -160,14 +162,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       setIsLoading(true);
-      const { success, message } = await authApi.logout();
+      console.log("Logout attempt");
+      const response = await authApi.logout();
+      console.log("Logout response:", response);
       
-      if (success) {
-        setUser(null);
-        toast.success(message || "已成功退出登录");
-      }
+      setUser(null);
+      removeAuthToken(); // 确保登出时移除token
+      toast.success(response.message || "Logged out successfully");
     } catch (error) {
       console.error("Logout failed:", error);
+      toast.error("Logout failed");
+      // 即使API调用失败，也要移除token并清除用户状态
+      removeAuthToken();
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -176,7 +183,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Update user data function
   const updateUser = (userData: Partial<User>) => {
     if (user) {
-      setUser({ ...user, ...userData });
+      const updatedUser = { ...user, ...userData };
+      console.log("Updating user data:", updatedUser);
+      setUser(updatedUser);
     }
   };
 
@@ -187,7 +196,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
-        loginWithPhone,
         register,
         logout,
         updateUser,

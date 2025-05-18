@@ -11,15 +11,28 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Camera, Check, Edit, MapPin, Plus, Star, Upload, X } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
+import { userApi } from "@/lib/api"
+
+interface ProfileData {
+  username?: string;
+  name?: string;
+  bio?: string;
+  location?: string;
+  hourly_rate?: number;
+  skills?: string[];
+  verified?: boolean;
+  avatar?: string;
+  [key: string]: any;
+}
 
 export default function ProfilePage() {
-  const { toast } = useToast()
-
+  const { user: authUser, updateUser } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [profileData, setProfileData] = useState(null)
+  const [profileData, setProfileData] = useState<ProfileData>({})
 
   // 表单状态
   const [name, setName] = useState("")
@@ -27,50 +40,37 @@ export default function ProfilePage() {
   const [location, setLocation] = useState("")
   const [hourlyRate, setHourlyRate] = useState("")
   const [skillInput, setSkillInput] = useState("")
-  const [skills, setSkills] = useState([])
+  const [skills, setSkills] = useState<string[]>([])
 
   useEffect(() => {
-    // 这里将调用获取用户资料的API
-    // async function fetchProfileData() {
-    //   try {
-    //     const response = await fetch('/api/users/profile');
-    //     if (!response.ok) throw new Error('获取用户资料失败');
-    //     const data = await response.json();
-    //     setProfileData(data);
-    //
-    //     // 初始化表单状态
-    //     setName(data.name || '');
-    //     setBio(data.bio || '');
-    //     setLocation(data.location || '');
-    //     setHourlyRate(data.hourlyRate?.toString() || '');
-    //     setSkills(data.skills || []);
-    //   } catch (error) {
-    //     console.error('获取用户资料失败:', error);
-    //     toast({
-    //       title: "获取资料失败",
-    //       description: error.message,
-    //       variant: "destructive",
-    //     });
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // }
+    const fetchProfileData = async () => {
+      try {
+        setIsLoading(true)
+        const { success, data, error } = await userApi.getProfile()
+        
+        if (success && data?.user) {
+          const userData = data.user
+          setProfileData(userData)
+          
+          // 初始化表单状态
+          setName(userData.name || '')
+          setBio(userData.bio || '')
+          setLocation(userData.location || '')
+          setHourlyRate(userData.hourly_rate?.toString() || '')
+          setSkills(userData.skills || [])
+        } else {
+          toast.error("获取用户资料失败: " + error)
+        }
+      } catch (error) {
+        console.error('获取用户资料失败:', error)
+        toast.error("获取资料失败，请稍后重试")
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-    // fetchProfileData();
-
-    // 模拟加载状态
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-      // 设置空的初始数据
-      setName("")
-      setBio("")
-      setLocation("")
-      setHourlyRate("")
-      setSkills([])
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  }, [toast])
+    fetchProfileData()
+  }, [])
 
   const handleAddSkill = () => {
     if (skillInput.trim() && !skills.includes(skillInput.trim())) {
@@ -79,55 +79,68 @@ export default function ProfilePage() {
     }
   }
 
-  const handleRemoveSkill = (skill) => {
+  const handleRemoveSkill = (skill: string) => {
     setSkills(skills.filter((s) => s !== skill))
   }
 
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      // 这里将调用保存用户资料的API
-      // const response = await fetch('/api/users/profile', {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     name,
-      //     bio,
-      //     location,
-      //     hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
-      //     skills,
-      //   })
-      // });
-
-      // if (!response.ok) throw new Error('保存资料失败');
-
-      toast({
-        title: "保存成功",
-        description: "您的个人资料已更新",
-      })
-
-      setIsEditing(false)
-    } catch (error) {
-      toast({
-        title: "保存失败",
-        description: error.message,
-        variant: "destructive",
-      })
+      
+      const updatedProfile = {
+        name,
+        bio,
+        location,
+        hourly_rate: hourlyRate ? Number(hourlyRate) : undefined,
+        skills,
+      }
+      
+      const { success, data, error } = await userApi.updateProfile(updatedProfile)
+      
+      if (success && data?.user) {
+        setProfileData(data.user)
+        // 更新全局用户状态
+        updateUser(data.user)
+        toast.success("个人资料已更新")
+        setIsEditing(false)
+      } else {
+        throw new Error(error || "保存资料失败")
+      }
+    } catch (error: any) {
+      toast.error(error.message || "保存失败，请稍后重试")
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleUploadAvatar = () => {
-    // 这里将实现头像上传功能
-    toast({
-      title: "功能开发中",
-      description: "头像上传功能即将上线",
-    })
+  const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || event.target.files.length === 0) {
+      return
+    }
+    
+    try {
+      const file = event.target.files[0]
+      const formData = new FormData()
+      formData.append('avatar', file)
+      
+      const { success, data, error } = await userApi.uploadAvatar(formData)
+      
+      if (success && data?.avatarUrl) {
+        // 更新个人资料中的头像
+        setProfileData({...profileData, avatar: data.avatarUrl})
+        // 更新全局用户状态
+        updateUser({avatar: data.avatarUrl})
+        toast.success("头像已更新")
+      } else {
+        throw new Error(error || "上传头像失败")
+      }
+    } catch (error: any) {
+      toast.error(error.message || "上传失败，请稍后重试")
+    }
   }
 
   const handleVerifyIdentity = () => {
-    // 这里将实现实名认证功能
+    // 这里实现实名认证功能
     toast({
       title: "功能开发中",
       description: "实名认证功能即将上线",
@@ -211,18 +224,28 @@ export default function ProfilePage() {
                 <div className="flex flex-col sm:flex-row gap-6 items-start">
                   <div className="relative">
                     <Avatar className="h-24 w-24">
-                      <AvatarImage src="/placeholder.svg?height=96&width=96" alt="头像" />
-                      <AvatarFallback>{name?.charAt(0) || "用户"}</AvatarFallback>
+                      <AvatarImage src={profileData.avatar || "/placeholder.svg?height=96&width=96"} alt="头像" />
+                      <AvatarFallback>{name?.charAt(0) || profileData.username?.charAt(0) || "用户"}</AvatarFallback>
                     </Avatar>
                     {isEditing && (
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        className="absolute bottom-0 right-0 rounded-full"
-                        onClick={handleUploadAvatar}
-                      >
-                        <Camera className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <input 
+                          type="file" 
+                          id="avatar-upload" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={handleUploadAvatar}
+                        />
+                        <label htmlFor="avatar-upload">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            className="absolute bottom-0 right-0 rounded-full cursor-pointer"
+                          >
+                            <Camera className="h-4 w-4" />
+                          </Button>
+                        </label>
+                      </>
                     )}
                   </div>
                   <div className="space-y-4 flex-1">
@@ -231,7 +254,7 @@ export default function ProfilePage() {
                       {isEditing ? (
                         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
                       ) : (
-                        <div className="text-lg font-medium">{name || "未设置"}</div>
+                        <div className="text-lg font-medium">{name || profileData.name || "未设置"}</div>
                       )}
                     </div>
                     <div className="space-y-2">
@@ -245,7 +268,7 @@ export default function ProfilePage() {
                           placeholder="请简要介绍自己，包括专业技能、工作经验等"
                         />
                       ) : (
-                        <p className="text-muted-foreground">{bio || "暂无简介"}</p>
+                        <p className="text-muted-foreground">{bio || profileData.bio || "暂无简介"}</p>
                       )}
                     </div>
                   </div>
@@ -267,7 +290,7 @@ export default function ProfilePage() {
                     ) : (
                       <div className="flex items-center text-muted-foreground">
                         <MapPin className="mr-2 h-4 w-4" />
-                        {location || "未设置"}
+                        {location || profileData.location || "未设置"}
                       </div>
                     )}
                   </div>
@@ -285,7 +308,11 @@ export default function ProfilePage() {
                         <span className="text-muted-foreground whitespace-nowrap">元/小时</span>
                       </div>
                     ) : (
-                      <div className="text-muted-foreground">{hourlyRate ? `${hourlyRate} 元/小时` : "未设置"}</div>
+                      <div className="text-muted-foreground">
+                        {hourlyRate || profileData.hourly_rate ? 
+                          `${hourlyRate || profileData.hourly_rate} 元/小时` : 
+                          "未设置"}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -368,14 +395,21 @@ export default function ProfilePage() {
                     <p className="font-medium">身份认证</p>
                     <p className="text-sm text-muted-foreground">上传您的身份证正反面照片进行认证</p>
                   </div>
-                  <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                    待认证
+                  <Badge 
+                    variant="outline" 
+                    className={profileData.verified ? 
+                      "bg-green-100 text-green-800 hover:bg-green-100" : 
+                      "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"}
+                  >
+                    {profileData.verified ? "已认证" : "待认证"}
                   </Badge>
                 </div>
-                <Button className="mt-4" onClick={handleVerifyIdentity}>
-                  <Upload className="mr-2 h-4 w-4" />
-                  上传证件
-                </Button>
+                {!profileData.verified && (
+                  <Button className="mt-4" onClick={handleVerifyIdentity}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    上传证件
+                  </Button>
+                )}
               </>
             )}
           </CardContent>
@@ -397,12 +431,26 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="border rounded-lg p-2 aspect-square flex items-center justify-center bg-muted">
-                  <Button variant="ghost" className="h-full w-full flex flex-col gap-2">
-                    <Plus className="h-6 w-6" />
-                    <span>添加作品</span>
-                  </Button>
-                </div>
+                {profileData.portfolios && profileData.portfolios.length > 0 ? (
+                  // 显示作品
+                  profileData.portfolios.map((portfolio, index) => (
+                    <div key={index} className="border rounded-lg p-2 aspect-square overflow-hidden">
+                      <img 
+                        src={portfolio.image} 
+                        alt={portfolio.title} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))
+                ) : (
+                  // 添加作品按钮
+                  <div className="border rounded-lg p-2 aspect-square flex items-center justify-center bg-muted">
+                    <Button variant="ghost" className="h-full w-full flex flex-col gap-2">
+                      <Plus className="h-6 w-6" />
+                      <span>添加作品</span>
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -456,6 +504,136 @@ export default function ProfilePage() {
                             <Skeleton className="h-4 w-24" />
                           </div>
                           <Skeleton className="h-4 w-full mt-2" />
+                        </div>
+                      ))}
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : profileData.reviews && profileData.reviews.length > 0 ? (
+              <div>
+                {/* 评分统计 */}
+                <div className="flex items-center gap-4 mb-6">
+                  {/* 平均分 */}
+                  <div className="flex flex-col items-center">
+                    <div className="text-3xl font-bold">{profileData.rating || "0"}</div>
+                    <div className="flex items-center text-yellow-500">
+                      {Array(5).fill(0).map((_, i) => (
+                        <Star key={i} 
+                          className={`h-4 w-4 ${i < Math.round(profileData.rating || 0) ? 'fill-current' : ''}`} 
+                        />
+                      ))}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{profileData.reviews.length} 条评价</p>
+                  </div>
+                  
+                  {/* 评分分布 */}
+                  <div className="flex-1 space-y-2">
+                    {[5, 4, 3, 2, 1].map(stars => {
+                      const count = profileData.reviews.filter(r => r.rating === stars).length;
+                      const percentage = profileData.reviews.length ? Math.round(count / profileData.reviews.length * 100) : 0;
+                      
+                      return (
+                        <div key={stars} className="flex items-center gap-2">
+                          <span className="text-sm w-8">{stars}星</span>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden flex-1">
+                            <div 
+                              className="bg-yellow-500 h-full" 
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                          <span className="text-sm w-8">{percentage}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                
+                {/* 评价列表 */}
+                <Tabs defaultValue="all">
+                  <TabsList>
+                    <TabsTrigger value="all">全部评价</TabsTrigger>
+                    <TabsTrigger value="positive">好评</TabsTrigger>
+                    <TabsTrigger value="negative">差评</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="all" className="space-y-4 mt-4">
+                    {profileData.reviews.map(review => (
+                      <div key={review.id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
+                              <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{review.reviewer.name}</p>
+                              <p className="text-xs text-muted-foreground">{review.created_at}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center text-yellow-500">
+                            {Array(5).fill(0).map((_, i) => (
+                              <Star key={i} 
+                                className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="mt-2 text-sm">{review.content}</p>
+                      </div>
+                    ))}
+                  </TabsContent>
+                  <TabsContent value="positive" className="space-y-4 mt-4">
+                    {profileData.reviews
+                      .filter(review => review.rating >= 4)
+                      .map(review => (
+                        <div key={review.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
+                                <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{review.reviewer.name}</p>
+                                <p className="text-xs text-muted-foreground">{review.created_at}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center text-yellow-500">
+                              {Array(5).fill(0).map((_, i) => (
+                                <Star key={i} 
+                                  className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm">{review.content}</p>
+                        </div>
+                      ))}
+                  </TabsContent>
+                  <TabsContent value="negative" className="space-y-4 mt-4">
+                    {profileData.reviews
+                      .filter(review => review.rating < 4)
+                      .map(review => (
+                        <div key={review.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={review.reviewer.avatar || "/placeholder.svg"} />
+                                <AvatarFallback>{review.reviewer.name?.charAt(0) || "?"}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{review.reviewer.name}</p>
+                                <p className="text-xs text-muted-foreground">{review.created_at}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center text-yellow-500">
+                              {Array(5).fill(0).map((_, i) => (
+                                <Star key={i} 
+                                  className={`h-3 w-3 ${i < review.rating ? 'fill-current' : ''}`} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm">{review.content}</p>
                         </div>
                       ))}
                   </TabsContent>

@@ -13,11 +13,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Calendar, MapPin, Plus, X } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
+import { tasksApi } from "@/lib/api"
 
 export default function CreateTaskPage() {
   const router = useRouter()
-  const { toast } = useToast()
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -46,56 +46,43 @@ export default function CreateTaskPage() {
     setSkills(skills.filter((s) => s !== skill))
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!title || !description || (locationType === "offline" && !location) || !startDate || !endDate || !budget) {
-      toast({
-        title: "表单不完整",
-        description: "请填写所有必填字段",
-        variant: "destructive",
-      })
+      toast.error("请填写所有必填字段")
       return
     }
 
     try {
       setIsLoading(true)
-      // 这里将调用创建任务的API
-      // const response = await fetch('/api/tasks', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     title,
-      //     description,
-      //     locationType,
-      //     location: locationType === 'offline' ? location : '线上远程',
-      //     startDate,
-      //     endDate,
-      //     paymentType,
-      //     budget: Number(budget),
-      //     headcount: Number(headcount),
-      //     skills,
-      //     isPublic,
-      //     isUrgent,
-      //   })
-      // });
-
-      // if (!response.ok) throw new Error('创建任务失败');
-      // const data = await response.json();
-
-      toast({
-        title: "发布成功",
-        description: "您的任务已成功发布",
-      })
-
-      // 发布成功后跳转到任务列表页
-      router.push("/dashboard/tasks")
-    } catch (error) {
-      toast({
-        title: "发布失败",
-        description: error.message,
-        variant: "destructive",
-      })
+      
+      const taskData = {
+        title,
+        description,
+        location_type: locationType,
+        location: locationType === 'offline' ? location : '线上远程',
+        start_date: startDate,
+        end_date: endDate,
+        payment_type: paymentType,
+        budget: Number(budget),
+        headcount: Number(headcount),
+        skills,
+        is_public: isPublic,
+        is_urgent: isUrgent,
+      }
+      
+      const { success, data, error } = await tasksApi.createTask(taskData)
+      
+      if (success && data) {
+        toast.success("任务发布成功")
+        router.push("/dashboard/tasks")
+      } else {
+        throw new Error(error || "创建任务失败")
+      }
+    } catch (error: any) {
+      console.error("任务发布失败:", error)
+      toast.error(error.message || "发布失败，请稍后重试")
     } finally {
       setIsLoading(false)
     }

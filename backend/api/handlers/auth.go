@@ -5,143 +5,27 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"zhlg/backend/api/middlewares"
+	"zhlg/backend/db"
 	"zhlg/backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
-
-// 内存数据存储
-var (
-	// 保护并发访问的互斥锁
-	mutex = &sync.Mutex{}
-
-	// 验证码存储
-	verificationCodes = []models.VerificationCode{}
-
-	// 用户存储
-	users = []models.User{}
-
-	// 无效token存储
-	invalidatedTokens = []models.InvalidatedToken{}
-)
-
-// 模拟数据库存储
-type MemDB struct{}
-
-// 模拟创建操作
-func (db *MemDB) Create(v interface{}) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	switch record := v.(type) {
-	case *models.VerificationCode:
-		verificationCodes = append(verificationCodes, *record)
-	case *models.User:
-		users = append(users, *record)
-	case *models.InvalidatedToken:
-		invalidatedTokens = append(invalidatedTokens, *record)
-	}
-}
-
-// 模拟保存操作
-func (db *MemDB) Save(v interface{}) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	switch record := v.(type) {
-	case *models.VerificationCode:
-		for i, c := range verificationCodes {
-			if c.Target == record.Target && c.Code == record.Code {
-				verificationCodes[i] = *record
-				return
-			}
-		}
-	}
-}
-
-// 模拟查询操作
-type DBQuery struct {
-	table      string
-	conditions map[string]interface{}
-	result     interface{}
-}
-
-// 模拟 Where 查询
-func (db *MemDB) Where(query string, args ...interface{}) *DBQuery {
-	// 简化版 - 仅分析第一个条件
-	// 实际应用中需要更复杂的解析
-	conditions := make(map[string]interface{})
-	if len(args) > 0 {
-		conditions[query] = args[0]
-	}
-	return &DBQuery{
-		conditions: conditions,
-	}
-}
-
-// 模拟 First 查询
-func (q *DBQuery) First(out interface{}) *DBResult {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	switch v := out.(type) {
-	case *models.User:
-		for _, user := range users {
-			for key, value := range q.conditions {
-				if key == "username = ?" && user.Username != nil && *user.Username == value.(string) {
-					*v = user
-					return &DBResult{found: true}
-				}
-				if key == "phone_number = ?" && user.PhoneNumber != nil && *user.PhoneNumber == value.(string) {
-					*v = user
-					return &DBResult{found: true}
-				}
-			}
-		}
-	case *models.VerificationCode:
-		// 简化实现，实际需要更复杂的条件匹配
-		for _, code := range verificationCodes {
-			if len(q.conditions) > 0 {
-				targetKey := "target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL"
-				if _, exists := q.conditions[targetKey]; exists {
-					// 在实际实现中应该检查所有条件
-					// 这里只是简单示例
-					*v = code
-					return &DBResult{found: true}
-				}
-			}
-		}
-	}
-	return &DBResult{found: false}
-}
-
-// 模拟查询结果
-type DBResult struct {
-	found bool
-}
-
-// 模拟 RecordNotFound 检查
-func (r *DBResult) RecordNotFound() bool {
-	return !r.found
-}
-
-// 创建内存数据库实例
-var db = &MemDB{}
 
 // SendVerificationCodeRequest represents the request body for sending a verification code
 type SendVerificationCodeRequest struct {
 	PhoneNumber string `json:"phone_number" binding:"required"`
+	Method      string `json:"method" binding:"required,oneof=login register"`
 }
 
 // RegisterRequest represents the request body for user registration
 type RegisterRequest struct {
 	UserType         string `json:"user_type" binding:"required,oneof=worker employer"`
-	Method           string `json:"method" binding:"required,oneof=phone username"`
+	Method           string `json:"method" binding:"required,oneof=username phone"`
 	PhoneNumber      string `json:"phone_number"`
 	VerificationCode string `json:"verification_code"`
 	Username         string `json:"username"`
@@ -150,7 +34,7 @@ type RegisterRequest struct {
 
 // LoginRequest represents the request body for user login
 type LoginRequest struct {
-	Method           string `json:"method" binding:"required,oneof=phone username"`
+	Method           string `json:"method" binding:"required,oneof=username phone"`
 	PhoneNumber      string `json:"phone_number"`
 	VerificationCode string `json:"verification_code"`
 	Username         string `json:"username"`
@@ -175,16 +59,28 @@ func SendVerificationCode(c *gin.Context) {
 	rand.Seed(time.Now().UnixNano())
 	code := fmt.Sprintf("%06d", rand.Intn(1000000))
 
+	// 确定验证码类型
+	var codeType models.VerificationCodeType
+	if req.Method == "register" {
+		codeType = models.VerificationCodeTypeRegister
+	} else {
+		codeType = models.VerificationCodeTypeLogin
+	}
+
 	// Create verification code record
 	verificationCode := models.VerificationCode{
 		Target:    req.PhoneNumber,
 		Code:      code,
-		Type:      models.VerificationCodeTypeRegister,
+		Type:      codeType,
 		ExpiresAt: time.Now().Add(10 * time.Minute), // Code expires in 10 minutes
 	}
 
-	// Save to "database"
-	db.Create(&verificationCode)
+	// Save to database
+	result := db.DB.Create(&verificationCode)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存验证码失败"})
+		return
+	}
 
 	// Return the code in response
 	c.JSON(http.StatusOK, gin.H{
@@ -233,17 +129,40 @@ func Register(c *gin.Context) {
 			return
 		}
 
-		// Simplified verification for demo
 		// Check if phone is already registered
 		var existingUser models.User
-		if !db.Where("phone_number = ?", req.PhoneNumber).First(&existingUser).RecordNotFound() {
+		result := db.DB.Where("phone_number = ?", req.PhoneNumber).First(&existingUser)
+		if result.Error == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "手机号已被注册"})
+			return
+		} else if result.Error != gorm.ErrRecordNotFound {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
 			return
 		}
 
+		// Verify the code
+		var verificationCode models.VerificationCode
+		result = db.DB.Where(
+			"target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL",
+			req.PhoneNumber, req.VerificationCode, models.VerificationCodeTypeRegister, time.Now(),
+		).First(&verificationCode)
+
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "验证码无效或已过期"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "验证码验证失败"})
+			}
+			return
+		}
+
+		// Mark the verification code as used
+		now := time.Now()
+		verificationCode.UsedAt = &now
+		db.DB.Save(&verificationCode)
+
 		// Set the phone number and mark as verified
 		phoneNumber := req.PhoneNumber
-		now := time.Now()
 		user.PhoneNumber = &phoneNumber
 		user.PhoneVerifiedAt = &now
 
@@ -268,21 +187,28 @@ func Register(c *gin.Context) {
 
 		// Check if username is already registered
 		var existingUser models.User
-		if !db.Where("username = ?", req.Username).First(&existingUser).RecordNotFound() {
+		result := db.DB.Where("username = ?", req.Username).First(&existingUser)
+		if result.Error == nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "用户名已被注册"})
+			return
+		} else if result.Error != gorm.ErrRecordNotFound {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
 			return
 		}
 
-		// Store the password directly without hashing
+		// Store the username and password
 		username := req.Username
-		password := req.Password
+		password := req.Password // 实际项目中应该哈希密码
 		user.Username = &username
 		user.PasswordHash = &password
 	}
 
-	// Save the user to "database"
-	user.ID = uint(len(users) + 1) // 简单自增ID
-	db.Create(&user)
+	// Save the user to database
+	result := db.DB.Create(&user)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户注册失败"})
+		return
+	}
 
 	// Generate JWT token
 	token, err := middlewares.GenerateToken(&user)
@@ -321,12 +247,37 @@ func Login(c *gin.Context) {
 			return
 		}
 
-		// Simplified verification for demo purposes
 		// Find user by phone number
-		if db.Where("phone_number = ?", req.PhoneNumber).First(&user).RecordNotFound() {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "手机号未注册"})
+		result := db.DB.Where("phone_number = ?", req.PhoneNumber).First(&user)
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "手机号未注册"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
+			}
 			return
 		}
+
+		// Verify the code
+		var verificationCode models.VerificationCode
+		result = db.DB.Where(
+			"target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL",
+			req.PhoneNumber, req.VerificationCode, models.VerificationCodeTypeLogin, time.Now(),
+		).First(&verificationCode)
+
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码无效或已过期"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "验证码验证失败"})
+			}
+			return
+		}
+
+		// Mark the verification code as used
+		now := time.Now()
+		verificationCode.UsedAt = &now
+		db.DB.Save(&verificationCode)
 
 	} else if req.Method == "username" {
 		// Username login: validate username and password
@@ -336,9 +287,28 @@ func Login(c *gin.Context) {
 		}
 
 		// Find user by username
-		if db.Where("username = ?", req.Username).First(&user).RecordNotFound() {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
-			return
+		result := db.DB.Where("username = ?", req.Username).First(&user)
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				// 创建一个测试用户（仅用于开发环境）
+				if req.Username == "testuser" && req.Password == "password123" {
+					testUsername := "testuser"
+					testPassword := "password123"
+					user = models.User{
+						UUID:         uuid.New().String(),
+						UserType:     models.UserTypeWorker,
+						Username:     &testUsername,
+						PasswordHash: &testPassword,
+					}
+					db.DB.Create(&user)
+				} else {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
+				return
+			}
 		}
 
 		// Check password
@@ -354,21 +324,6 @@ func Login(c *gin.Context) {
 		}
 	}
 
-	// If no users exist yet, create a mock user for testing
-	if len(users) == 0 {
-		testUsername := "testuser"
-		testPassword := "password123"
-		mockUser := models.User{
-			ID:           1,
-			UUID:         uuid.New().String(),
-			UserType:     models.UserTypeWorker,
-			Username:     &testUsername,
-			PasswordHash: &testPassword,
-		}
-		db.Create(&mockUser)
-		user = mockUser
-	}
-
 	// Generate JWT token
 	token, err := middlewares.GenerateToken(&user)
 	if err != nil {
@@ -379,12 +334,14 @@ func Login(c *gin.Context) {
 	// Return success response with user info and token
 	c.JSON(http.StatusOK, gin.H{
 		"message": "登录成功",
-		"user": gin.H{
-			"uuid":      user.UUID,
-			"username":  user.Username,
-			"user_type": user.UserType,
+		"data": gin.H{
+			"user": gin.H{
+				"uuid":      user.UUID,
+				"username":  user.Username,
+				"user_type": user.UserType,
+			},
+			"token": token,
 		},
-		"token": token,
 	})
 }
 
@@ -406,10 +363,16 @@ func Logout(c *gin.Context) {
 
 	// Add the token to a blacklist
 	token := parts[1]
-	db.Create(&models.InvalidatedToken{
+	invalidatedToken := models.InvalidatedToken{
 		Token:     token,
 		ExpiresAt: time.Now().Add(24 * time.Hour), // Assuming token validity period is 24 hours
-	})
+	}
+
+	result := db.DB.Create(&invalidatedToken)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "注销登录失败"})
+		return
+	}
 
 	// Return success
 	c.JSON(http.StatusOK, gin.H{"message": "登出成功"})

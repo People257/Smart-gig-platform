@@ -7,34 +7,52 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Clock, DollarSign, FileText, Plus, Star } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { dashboardApi } from "@/lib/api"
+import { toast } from "sonner"
+
+// 定义仪表盘数据类型
+interface DashboardData {
+  activeTasks?: number;
+  monthlyIncome?: number;
+  workHours?: number;
+  rating?: number;
+  recentTasks?: {
+    id: string;
+    title: string;
+    status: string;
+    date: string;
+  }[];
+  activities?: {
+    id: string;
+    content: string;
+    date: string;
+  }[];
+}
 
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [dashboardData, setDashboardData] = useState(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData>({})
 
   useEffect(() => {
-    // 这里将调用获取控制台数据的API
-    // async function fetchDashboardData() {
-    //   try {
-    //     const response = await fetch('/api/dashboard');
-    //     if (!response.ok) throw new Error('获取控制台数据失败');
-    //     const data = await response.json();
-    //     setDashboardData(data);
-    //   } catch (error) {
-    //     console.error('获取控制台数据失败:', error);
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // }
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true)
+        const { success, data, error } = await dashboardApi.getDashboardData()
+        
+        if (success && data) {
+          setDashboardData(data)
+        } else {
+          toast.error("获取控制台数据失败: " + error)
+        }
+      } catch (error) {
+        console.error('获取控制台数据失败:', error)
+        toast.error("获取数据失败，请稍后重试")
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-    // fetchDashboardData();
-
-    // 模拟加载状态
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
+    fetchDashboardData()
   }, [])
 
   return (
@@ -61,8 +79,10 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">0</div>
-                <p className="text-xs text-muted-foreground">暂无进行中的任务</p>
+                <div className="text-2xl font-bold">{dashboardData.activeTasks || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardData.activeTasks ? `共${dashboardData.activeTasks}个任务` : "暂无进行中的任务"}
+                </p>
               </>
             )}
           </CardContent>
@@ -77,8 +97,10 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">¥0</div>
-                <p className="text-xs text-muted-foreground">暂无收入记录</p>
+                <div className="text-2xl font-bold">¥{dashboardData.monthlyIncome || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardData.monthlyIncome ? "本月已结算收入" : "暂无收入记录"}
+                </p>
               </>
             )}
           </CardContent>
@@ -93,8 +115,10 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">0小时</div>
-                <p className="text-xs text-muted-foreground">暂无工作记录</p>
+                <div className="text-2xl font-bold">{dashboardData.workHours || 0}小时</div>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardData.workHours ? "总计工作时间" : "暂无工作记录"}
+                </p>
               </>
             )}
           </CardContent>
@@ -109,8 +133,10 @@ export default function DashboardPage() {
               <Skeleton className="h-8 w-20" />
             ) : (
               <>
-                <div className="text-2xl font-bold">--</div>
-                <p className="text-xs text-muted-foreground">暂无评价</p>
+                <div className="text-2xl font-bold">{dashboardData.rating || "--"}</div>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardData.rating ? "雇主评分" : "暂无评价"}
+                </p>
               </>
             )}
           </CardContent>
@@ -149,6 +175,23 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
+                </div>
+              ) : dashboardData.recentTasks && dashboardData.recentTasks.length > 0 ? (
+                <div className="space-y-4">
+                  {dashboardData.recentTasks.map(task => (
+                    <div key={task.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
+                      <div className="space-y-1">
+                        <h3 className="font-medium">{task.title}</h3>
+                        <p className="text-sm text-muted-foreground">{task.date}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{task.status}</span>
+                        <Link href={`/dashboard/tasks/${task.id}`}>
+                          <Button size="sm" variant="outline">查看</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -193,6 +236,20 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
+                </div>
+              ) : dashboardData.activities && dashboardData.activities.length > 0 ? (
+                <div className="space-y-4">
+                  {dashboardData.activities.map(activity => (
+                    <div key={activity.id} className="flex items-start gap-4 border-b pb-4 last:border-0 last:pb-0">
+                      <div className="rounded-full bg-muted p-3">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="space-y-1 flex-1">
+                        <p>{activity.content}</p>
+                        <p className="text-sm text-muted-foreground">{activity.date}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -244,6 +301,20 @@ export default function DashboardPage() {
                       <Skeleton className="h-8 w-16" />
                     </div>
                   ))}
+              </div>
+            ) : dashboardData.recentTasks && dashboardData.recentTasks.length > 0 ? (
+              <div className="space-y-4">
+                {dashboardData.recentTasks.slice(0, 2).map(task => (
+                  <div key={task.id} className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h3 className="font-medium">{task.title}</h3>
+                      <p className="text-sm text-muted-foreground">{task.date}</p>
+                    </div>
+                    <Link href={`/dashboard/tasks/${task.id}`}>
+                      <Button size="sm" variant="outline">查看</Button>
+                    </Link>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-center">

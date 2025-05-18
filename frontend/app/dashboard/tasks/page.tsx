@@ -59,7 +59,7 @@ export default function TasksPage() {
       }
       
       if (activeTab === "my" && user) {
-        params.user_id = user.id
+        params.user_id = user.uuid
       } else if (activeTab === "favorite" && user) {
         params.favorite = "true"
       }
@@ -98,9 +98,13 @@ export default function TasksPage() {
 
   const filteredTasks = tasks.filter((task) => {
     // Apply search filter
-    return searchQuery === "" || 
+    if (searchQuery === "") return true;
+    
+    return (
       task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.skills?.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
   })
 
   return (
@@ -116,7 +120,7 @@ export default function TasksPage() {
         </Link>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="all" className="flex-1 sm:flex-none">
@@ -284,7 +288,7 @@ export default function TasksPage() {
       
       if (success) {
         toast.success(message || "申请成功，请等待雇主审核");
-        fetchTasks(); // Refresh the task list
+        fetchTasks(); // 刷新任务列表
       } else {
         toast.error(error || "申请失败，请稍后重试");
       }

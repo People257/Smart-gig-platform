@@ -6,13 +6,15 @@ import (
 	"os"
 
 	"zhlg/backend/api/routes"
+	"zhlg/backend/db"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	// Skip loading environment variables and database initialization
+	// 初始化数据库连接
+	db.Init()
 
 	// Set Gin mode to debug by default
 	gin.SetMode(gin.DebugMode)
