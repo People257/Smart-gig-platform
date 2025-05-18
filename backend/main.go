@@ -6,34 +6,16 @@ import (
 	"os"
 
 	"zhlg/backend/api/routes"
-	"zhlg/backend/config"
-	"zhlg/backend/models"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Load environment variables from .env file
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
-	}
+	// Skip loading environment variables and database initialization
 
-	// Initialize database connection
-	db, err := config.InitDB()
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	// Initialize models
-	models.InitModels(db)
-
-	// Set Gin mode
-	if os.Getenv("GIN_MODE") == "release" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	// Set Gin mode to debug by default
+	gin.SetMode(gin.DebugMode)
 
 	// Initialize Gin router
 	r := gin.Default()

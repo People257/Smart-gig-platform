@@ -342,3 +342,65 @@ func UpdatePaymentSettings(c *gin.Context) {
 		"settings": settings,
 	})
 }
+
+// GetPaymentsData handles fetching a user's payment data
+func GetPaymentsData(c *gin.Context) {
+	// In a real application, we would get the user ID from the authenticated user
+	// userID := c.GetUint("userID")
+
+	// Create mock payment data for demo
+	c.JSON(http.StatusOK, gin.H{
+		"balance":  1250.75,
+		"currency": "CNY",
+		"recent_transactions": []gin.H{
+			{
+				"id":          "txn_123456",
+				"type":        "earning",
+				"amount":      500.00,
+				"status":      "completed",
+				"date":        time.Now().AddDate(0, 0, -1).Format(time.RFC3339),
+				"description": "任务完成：网站开发",
+			},
+			{
+				"id":          "txn_123457",
+				"type":        "withdrawal",
+				"amount":      -200.00,
+				"status":      "pending",
+				"date":        time.Now().Format(time.RFC3339),
+				"description": "提现申请",
+			},
+		},
+	})
+}
+
+// RequestWithdrawal handles a withdrawal request
+func RequestWithdrawal(c *gin.Context) {
+	var req struct {
+		Amount      float64 `json:"amount" binding:"required,gt=0"`
+		AccountUUID string  `json:"account_uuid" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
+		return
+	}
+
+	// In a real application, we would validate the account belongs to the user
+	// and check if the user has sufficient balance
+
+	// Create withdrawal (in a real app, this would be saved to the database)
+	withdrawalUUID := uuid.New().String()
+	now := time.Now()
+
+	// Return success response
+	c.JSON(http.StatusOK, gin.H{
+		"message": "提现申请已提交",
+		"withdrawal": gin.H{
+			"uuid":         withdrawalUUID,
+			"amount":       req.Amount,
+			"account_uuid": req.AccountUUID,
+			"status":       "pending",
+			"created_at":   now.Format(time.RFC3339),
+		},
+	})
+}
