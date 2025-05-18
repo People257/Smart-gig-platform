@@ -6,12 +6,19 @@ import { toast } from "sonner";
 
 // User type definition
 interface User {
-  id: string;
-  name?: string;
-  email: string;
-  role: string;
+  uuid: string;
+  username?: string;
+  user_type: string;
   avatar?: string;
   [key: string]: any;
+}
+
+// API response type
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
 }
 
 // Auth context type definition
@@ -19,8 +26,9 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (userData: any) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
+  loginWithPhone: (phoneNumber: string, verificationCode: string) => Promise<boolean>;
+  register: (userType: "worker" | "employer", method: "username" | "phone", data: any) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -31,6 +39,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isAuthenticated: false,
   login: async () => false,
+  loginWithPhone: async () => false,
   register: async () => false,
   logout: async () => {},
   updateUser: () => {},
@@ -64,18 +73,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  // Login function
-  const login = async (email: string, password: string) => {
+  // Login with username and password
+  const login = async (username: string, password: string) => {
     try {
       setIsLoading(true);
-      const { success, data, message } = await authApi.login({ email, password });
+      const response = await authApi.login({
+        method: "username",
+        username,
+        password
+      });
       
-      if (success && data?.user) {
-        setUser(data.user);
-        toast.success(message || "Login successful");
+      if (response.success && response.data?.user) {
+        setUser(response.data.user);
+        toast.success(response.message || "登录成功");
         return true;
+      } else {
+        toast.error(response.error || "登录失败");
+        return false;
       }
-      return false;
     } catch (error) {
       console.error("Login failed:", error);
       return false;
@@ -84,18 +99,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Register function
-  const register = async (userData: any) => {
+  // Login with phone and verification code
+  const loginWithPhone = async (phoneNumber: string, verificationCode: string) => {
     try {
       setIsLoading(true);
-      const { success, data, message } = await authApi.register(userData);
+      const response = await authApi.login({
+        method: "phone",
+        phone_number: phoneNumber,
+        verification_code: verificationCode
+      });
       
-      if (success && data?.user) {
-        setUser(data.user);
-        toast.success(message || "Registration successful");
+      if (response.success && response.data?.user) {
+        setUser(response.data.user);
+        toast.success(response.message || "登录成功");
         return true;
+      } else {
+        toast.error(response.error || "登录失败");
+        return false;
       }
+    } catch (error) {
+      console.error("Phone login failed:", error);
       return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Register function
+  const register = async (userType: "worker" | "employer", method: "username" | "phone", data: any) => {
+    try {
+      setIsLoading(true);
+      
+      const registerData = {
+        user_type: userType,
+        method,
+        ...method === "username" 
+          ? { username: data.username, password: data.password }
+          : { phone_number: data.phoneNumber, verification_code: data.verificationCode }
+      };
+      
+      const response = await authApi.register(registerData);
+      
+      if (response.success && response.data?.user) {
+        setUser(response.data.user);
+        toast.success(response.message || "注册成功");
+        return true;
+      } else {
+        toast.error(response.error || "注册失败");
+        return false;
+      }
     } catch (error) {
       console.error("Registration failed:", error);
       return false;
@@ -112,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (success) {
         setUser(null);
-        toast.success(message || "Logout successful");
+        toast.success(message || "已成功退出登录");
       }
     } catch (error) {
       console.error("Logout failed:", error);
@@ -135,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        loginWithPhone,
         register,
         logout,
         updateUser,

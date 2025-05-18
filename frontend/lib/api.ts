@@ -39,12 +39,16 @@ async function fetchApi<T>(
     const data = await response.json();
     
     if (!response.ok) {
-      const errorMessage = data.message || `Error: ${response.status}`;
+      const errorMessage = data.error || `Error: ${response.status}`;
       toast.error(errorMessage);
       return { success: false, error: errorMessage };
     }
     
-    return { success: true, data: data.data || data, message: data.message };
+    return { 
+      success: true, 
+      data: data.data || data, 
+      message: data.message 
+    };
   } catch (error: any) {
     return handleApiError(error);
   }
@@ -52,27 +56,70 @@ async function fetchApi<T>(
 
 // Auth API
 export const authApi = {
-  sendVerificationCode: async (data: { phone: string }) => {
+  // 发送验证码
+  sendVerificationCode: async (data: { phone_number: string }) => {
     return fetchApi<{ sent: boolean }>("/auth/send-verification-code", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
   
-  login: async (credentials: { email: string; password: string }) => {
+  // 登录
+  login: async ({ 
+    method, 
+    username, 
+    password,
+    phone_number,
+    verification_code 
+  }: {
+    method: "username" | "phone";
+    username?: string;
+    password?: string;
+    phone_number?: string;
+    verification_code?: string;
+  }) => {
     return fetchApi<{ token: string; user: any }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({
+        method,
+        username,
+        password,
+        phone_number,
+        verification_code
+      }),
     });
   },
   
-  register: async (userData: any) => {
-    return fetchApi<{ user: any }>("/auth/register", {
+  // 注册
+  register: async ({
+    user_type,
+    method,
+    username,
+    password,
+    phone_number,
+    verification_code
+  }: {
+    user_type: "worker" | "employer";
+    method: "username" | "phone";
+    username?: string;
+    password?: string;
+    phone_number?: string;
+    verification_code?: string;
+  }) => {
+    return fetchApi<{ token: string; user: any }>("/auth/register", {
       method: "POST",
-      body: JSON.stringify(userData),
+      body: JSON.stringify({
+        user_type,
+        method,
+        username,
+        password,
+        phone_number,
+        verification_code
+      }),
     });
   },
   
+  // 登出
   logout: async () => {
     return fetchApi("/auth/logout", { method: "POST" });
   },

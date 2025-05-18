@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -15,21 +15,28 @@ import { authApi } from "@/lib/api"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { login } = useAuth()
+  const { login, loginWithPhone } = useAuth()
 
   const [activeTab, setActiveTab] = useState("username")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [verificationCode, setVerificationCode] = useState("")
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [countdown, setCountdown] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  
+  // 显示API URL用于调试
+  useEffect(() => {
+    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
+  }, []);
 
   const handleSendCode = async () => {
     if (phoneNumber.length === 11) {
       try {
         setIsLoading(true)
-        const { success, message } = await authApi.sendVerificationCode({ phone: phoneNumber });
+        console.log("发送验证码请求:", { phone_number: phoneNumber });
+        const { success, message } = await authApi.sendVerificationCode({ phone_number: phoneNumber });
+        console.log("验证码响应:", { success, message });
         
         if (success) {
           setCountdown(60)
@@ -46,6 +53,7 @@ export default function LoginPage() {
           toast.success(message || "验证码已发送，请查看您的手机短信");
         }
       } catch (error) {
+        console.error("发送验证码错误:", error);
         toast.error("发送验证码失败: " + (error.message || "未知错误"));
       } finally {
         setIsLoading(false)
@@ -54,7 +62,8 @@ export default function LoginPage() {
   }
 
   const handleLogin = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
+    console.log("登录尝试:", { activeTab, username, password, phoneNumber, verificationCode });
 
     try {
       setIsLoading(true)
@@ -62,20 +71,56 @@ export default function LoginPage() {
       let success = false;
       
       if (activeTab === "phone") {
-        toast.error("手机号登录暂未实现，请使用用户名密码登录");
+        if (phoneNumber && verificationCode) {
+          console.log("手机号登录:", { phoneNumber, verificationCode });
+          success = await loginWithPhone(phoneNumber, verificationCode);
+          console.log("手机号登录结果:", success);
+        } else {
+          toast.error("请输入手机号和验证码");
+        }
       } else {
-        success = await login(email, password);
+        if (username && password) {
+          console.log("用户名登录:", { username, password });
+          success = await login(username, password);
+          console.log("用户名登录结果:", success);
+        } else {
+          toast.error("请输入用户名和密码");
+        }
       }
 
       if (success) {
         router.push("/dashboard");
       }
     } catch (error) {
+      console.error("登录错误:", error);
       toast.error("登录失败: " + (error.message || "未知错误"));
     } finally {
       setIsLoading(false)
     }
   }
+
+  // 直接调用登录API的测试函数
+  const testDirectApiCall = async () => {
+    try {
+      console.log("直接API调用测试 - 开始");
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          method: 'username',
+          username: username,
+          password: password
+        }),
+      });
+      console.log("API响应状态:", response.status);
+      const data = await response.json();
+      console.log("API响应数据:", data);
+    } catch (error) {
+      console.error("直接API调用错误:", error);
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -105,7 +150,7 @@ export default function LoginPage() {
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="phone">手机号登录</TabsTrigger>
-                  <TabsTrigger value="username">邮箱登录</TabsTrigger>
+                  <TabsTrigger value="username">用户名登录</TabsTrigger>
                 </TabsList>
                 <TabsContent value="phone" className="space-y-4">
                   <div className="space-y-2">
@@ -141,13 +186,13 @@ export default function LoginPage() {
                 </TabsContent>
                 <TabsContent value="username" className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email">邮箱</Label>
+                    <Label htmlFor="username">用户名</Label>
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="请输入邮箱"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      id="username"
+                      type="text"
+                      placeholder="请输入用户名"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -167,16 +212,27 @@ export default function LoginPage() {
                   </div>
                 </TabsContent>
               </Tabs>
+              
+              {/* 调试按钮 */}
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={testDirectApiCall} 
+                className="w-full mt-4"
+              >
+                测试直接API调用
+              </Button>
             </form>
           </CardContent>
           <CardFooter>
             <Button
               className="w-full"
+              type="button"
               onClick={handleLogin}
               disabled={
                 isLoading ||
                 (activeTab === "phone" && (phoneNumber.length !== 11 || !verificationCode)) ||
-                (activeTab === "username" && (!email || !password))
+                (activeTab === "username" && (!username || !password))
               }
             >
               {isLoading ? "登录中..." : "登录"}
