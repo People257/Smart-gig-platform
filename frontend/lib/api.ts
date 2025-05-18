@@ -330,7 +330,33 @@ export const authApi = {
 export const userApi = {
   getProfile: async () => {
     console.log("Calling getProfile API");
-    return fetchApi<{ user: any }>("/users/profile");
+    try {
+      const response = await fetchApi<{ user: any }>("/users/profile");
+      
+      // If the response doesn't have a user property but has data, restructure it
+      if (response.success && response.data && !response.data.user && Object.keys(response.data).length > 0) {
+        // Check if this looks like user data (has common user fields)
+        const hasUserFields = [
+          'uuid', 'username', 'name', 'email', 'phone_number', 'user_type', 'avatar_url'
+        ].some(field => field in response.data);
+        
+        if (hasUserFields) {
+          console.log("Restructuring user data response");
+          return {
+            ...response,
+            data: { user: response.data }
+          };
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      console.error("Error in getProfile:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "获取用户资料时出错" 
+      };
+    }
   },
   
   updateProfile: async (profileData: any) => {
@@ -347,6 +373,49 @@ export const userApi = {
       method: "POST",
       body: formData,
       headers: {}, // Let the browser set the content type with boundary for FormData
+    });
+  },
+  
+  updateUserSettings: async (settingsData: {
+    username?: string;
+    email?: string;
+    phone_number?: string;
+    notification_preferences?: {
+      email_notifications?: boolean;
+      sms_notifications?: boolean;
+      app_notifications?: boolean;
+      task_notifications?: boolean;
+      message_notifications?: boolean;
+      payment_notifications?: boolean;
+    };
+    privacy_settings?: {
+      profile_visibility?: boolean;
+      show_hourly_rate?: boolean;
+      show_contact_info?: boolean;
+    };
+  }) => {
+    console.log("Calling updateUserSettings API:", settingsData);
+    return fetchApi<{ user: any }>("/users/settings", {
+      method: "PUT",
+      body: JSON.stringify(settingsData),
+    });
+  },
+  
+  changePassword: async (passwordData: {
+    current_password: string;
+    new_password: string;
+  }) => {
+    console.log("Calling changePassword API");
+    return fetchApi<{ success: boolean }>("/users/change-password", {
+      method: "POST",
+      body: JSON.stringify(passwordData),
+    });
+  },
+  
+  deleteAccount: async () => {
+    console.log("Calling deleteAccount API");
+    return fetchApi<{ success: boolean }>("/users/account", {
+      method: "DELETE",
     });
   },
 };

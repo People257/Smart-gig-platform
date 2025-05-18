@@ -139,7 +139,7 @@ export default function RegisterPage() {
       // Prepare registration data
       const registerData = {
         user_type: userType,
-        method: activeTab === "username" ? "password" : "verification_code",
+        method: activeTab,
         ...(activeTab === "username" 
           ? { username, password } 
           : { phone_number: phoneNumber, verification_code: verificationCode })

@@ -163,7 +163,7 @@ export default function ProfilePage() {
     }
 
     fetchProfileData()
-  }, [])
+  }, [retryCount])
 
   // 重试加载用户资料
   const handleRetry = () => {
