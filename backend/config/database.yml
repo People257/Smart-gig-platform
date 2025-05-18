@@ -1,0 +1,6 @@
+database:
+  dialect: mysql
+  datasource: root:@tcp(localhost:3306)/zhlg?charset=utf8&parseTime=True&loc=Local
+  max_idle_conns: 10
+  max_open_conns: 100
+  log_mode: true 

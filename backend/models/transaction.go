@@ -81,30 +81,6 @@ type Withdrawal struct {
 	CompletedAt   *time.Time
 }
 
-// Account types
-type AccountType string
-
-const (
-	AccountTypeAlipay AccountType = "alipay"
-	AccountTypeWechat AccountType = "wechat"
-	AccountTypeBank   AccountType = "bank"
-)
-
-// WithdrawalAccount represents a user's withdrawal account
-type WithdrawalAccount struct {
-	ID        uint        `gorm:"primaryKey"`
-	UUID      string      `gorm:"type:varchar(36);uniqueIndex"`
-	UserID    uint        `gorm:"index"`
-	User      User        `gorm:"foreignKey:UserID"`
-	Type      AccountType `gorm:"type:varchar(20)"`
-	Account   string      `gorm:"type:varchar(100)"`
-	RealName  *string     `gorm:"type:varchar(50)"`
-	BankName  *string     `gorm:"type:varchar(100)"`
-	IsDefault bool        `gorm:"default:false"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
 // UserPaymentSettings represents a user's payment preferences
 type UserPaymentSettings struct {
 	ID                      uint    `gorm:"primaryKey"`

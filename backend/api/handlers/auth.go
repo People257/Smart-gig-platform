@@ -60,11 +60,9 @@ func SendVerificationCode(c *gin.Context) {
 	rand.Seed(time.Now().UnixNano())
 	code := fmt.Sprintf("%06d", rand.Intn(1000000))
 
-	// In a real app, we would send the code via SMS service
-	// For now, we'll just save it to the database
-
 	// Create verification code record in database
-	verificationCode := models.VerificationCode{
+	// In a real app, we would save this to the database
+	_ = models.VerificationCode{
 		Target:    req.PhoneNumber,
 		Code:      code,
 		Type:      models.VerificationCodeTypeRegister,
@@ -317,7 +315,9 @@ func Logout(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的授权头"})
 		return
 	}
-	tokenString := parts[1]
+
+	// Token will be used in a real implementation to invalidate it
+	_ = parts[1]
 
 	// In a real application, we would add the token to a blacklist or invalidate it
 	// For example:
