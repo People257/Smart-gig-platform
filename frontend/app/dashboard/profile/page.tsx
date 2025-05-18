@@ -46,9 +46,11 @@ export default function ProfilePage() {
     const fetchProfileData = async () => {
       try {
         setIsLoading(true)
+        console.log("获取用户资料...")
         const { success, data, error } = await userApi.getProfile()
         
         if (success && data?.user) {
+          console.log("用户资料数据:", data.user)
           const userData = data.user
           setProfileData(userData)
           
@@ -57,8 +59,29 @@ export default function ProfilePage() {
           setBio(userData.bio || '')
           setLocation(userData.location || '')
           setHourlyRate(userData.hourly_rate?.toString() || '')
-          setSkills(userData.skills || [])
+          
+          // 处理技能数据 - 支持两种可能的后端返回格式
+          if (userData.skills) {
+            // 如果skills是对象数组 [{id: 1, name: "技能名"}]
+            if (Array.isArray(userData.skills) && userData.skills.length > 0 && typeof userData.skills[0] === 'object') {
+              const skillNames = userData.skills.map(skill => skill.name || '').filter(Boolean)
+              console.log("解析的技能名称:", skillNames)
+              setSkills(skillNames)
+            } 
+            // 如果skills是字符串数组 ["技能1", "技能2"]
+            else if (Array.isArray(userData.skills)) {
+              console.log("已有技能列表:", userData.skills)
+              setSkills(userData.skills)
+            }
+            else {
+              console.log("未知技能格式:", userData.skills)
+              setSkills([])
+            }
+          } else {
+            setSkills([])
+          }
         } else {
+          console.error("获取用户资料失败:", error)
           toast.error("获取用户资料失败: " + error)
         }
       } catch (error) {
@@ -86,27 +109,39 @@ export default function ProfilePage() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
+      console.log("准备保存用户资料...");
       
+      // 构建要更新的个人资料数据
       const updatedProfile = {
         name,
         bio,
         location,
-        hourly_rate: hourlyRate ? Number(hourlyRate) : undefined,
-        skills,
+        hourly_rate: hourlyRate ? parseFloat(hourlyRate) : undefined,
+        // 根据原始数据格式，决定如何提交skills
+        skills: profileData.skills && 
+               Array.isArray(profileData.skills) && 
+               profileData.skills.length > 0 && 
+               typeof profileData.skills[0] === 'object' 
+               ? skills.map(skillName => ({name: skillName})) // 如果原始数据是对象数组
+               : skills // 如果原始数据是字符串数组
       }
       
+      console.log("提交的资料数据:", updatedProfile);
       const { success, data, error } = await userApi.updateProfile(updatedProfile)
       
       if (success && data?.user) {
+        console.log("更新成功的用户数据:", data.user);
         setProfileData(data.user)
         // 更新全局用户状态
         updateUser(data.user)
         toast.success("个人资料已更新")
         setIsEditing(false)
       } else {
+        console.error("保存资料失败:", error);
         throw new Error(error || "保存资料失败")
       }
     } catch (error: any) {
+      console.error("保存过程发生异常:", error);
       toast.error(error.message || "保存失败，请稍后重试")
     } finally {
       setIsSaving(false)
@@ -354,10 +389,17 @@ export default function ProfilePage() {
                     </>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {skills.length > 0 ? (
+                      {skills && skills.length > 0 ? (
                         skills.map((skill, index) => (
                           <Badge key={index} variant="secondary">
                             {skill}
+                          </Badge>
+                        ))
+                      ) : profileData.skills && Array.isArray(profileData.skills) && profileData.skills.length > 0 ? (
+                        // 处理原始profileData中的skills，支持对象数组或字符串数组
+                        profileData.skills.map((skill, index) => (
+                          <Badge key={index} variant="secondary">
+                            {typeof skill === 'object' && skill.name ? skill.name : skill}
                           </Badge>
                         ))
                       ) : (

@@ -71,7 +71,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           if (response.data?.user) {
             console.log("User is authenticated:", response.data.user);
-            setUser(response.data.user);
+            try {
+              // 先验证user对象有基本必须的字段
+              if (!response.data.user.uuid) {
+                console.error("User data missing required uuid field:", response.data.user);
+                toast.error("用户数据缺少必要信息，请重新登录");
+                removeAuthToken();
+                setIsLoading(false);
+                return;
+              }
+              
+              // 设置用户状态
+              setUser(response.data.user);
+            } catch (parseError) {
+              console.error("Error parsing user data:", parseError, response.data.user);
+              // 不要立即退出登录，让用户可以尝试刷新页面
+              toast.error("解析用户数据出错，请刷新页面重试");
+            }
           } else {
             console.log("User profile not found, but keeping token");
             // 不立即删除token，因为可能是临时网络问题

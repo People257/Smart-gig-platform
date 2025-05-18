@@ -43,16 +43,48 @@ export default function PaymentsPage() {
     const fetchPaymentData = async () => {
       try {
         setIsLoading(true)
-        const { success, data, error } = await paymentsApi.getPaymentsData()
+        console.log("正在获取支付数据...")
+        const response = await paymentsApi.getPaymentsData()
         
-        if (success && data) {
-          setPaymentData(data)
+        if (response.success && response.data) {
+          console.log("成功获取支付数据:", response.data)
+          
+          // 确保所有必要的字段都存在，给缺失字段提供默认值
+          const normalizedData = {
+            balance: response.data.balance || 0,
+            totalIncome: response.data.totalIncome || 0,
+            totalExpense: response.data.totalExpense || 0,
+            withdrawalAccounts: response.data.withdrawalAccounts || [],
+            transactions: response.data.transactions || []
+          }
+          
+          setPaymentData(normalizedData)
         } else {
-          toast.error("获取支付数据失败: " + error)
+          console.error("获取支付数据失败:", response.error)
+          toast.error("获取支付数据失败: " + (response.error || "未知错误"))
+          
+          // 在API调用失败时保持现有数据状态，不修改
+          // 如果是第一次加载（没有数据），设置默认值
+          setPaymentData(prevData => ({
+            balance: prevData.balance || 0,
+            totalIncome: prevData.totalIncome || 0,
+            totalExpense: prevData.totalExpense || 0,
+            withdrawalAccounts: prevData.withdrawalAccounts || [],
+            transactions: prevData.transactions || []
+          }))
         }
       } catch (error) {
-        console.error('获取支付数据失败:', error)
+        console.error('获取支付数据异常:', error)
         toast.error("获取数据失败，请稍后重试")
+        
+        // 在异常情况下保持现有数据状态
+        setPaymentData(prevData => ({
+          balance: prevData.balance || 0,
+          totalIncome: prevData.totalIncome || 0,
+          totalExpense: prevData.totalExpense || 0,
+          withdrawalAccounts: prevData.withdrawalAccounts || [],
+          transactions: prevData.transactions || []
+        }))
       } finally {
         setIsLoading(false)
       }
@@ -98,23 +130,28 @@ export default function PaymentsPage() {
   }
 
   const filterTransactions = (type: string) => {
-    if (!paymentData.transactions) return []
+    if (!paymentData.transactions || !Array.isArray(paymentData.transactions)) {
+      console.log("No transactions found or invalid data")
+      return []
+    }
     
     let filtered = [...paymentData.transactions]
     
     // 应用类型过滤
     if (type === "income") {
-      filtered = filtered.filter(t => t.type === "income")
+      filtered = filtered.filter(t => t && t.type === "income")
     } else if (type === "expense") {
-      filtered = filtered.filter(t => t.type === "expense")
+      filtered = filtered.filter(t => t && t.type === "expense")
     }
     
     // 应用搜索过滤
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(t => 
-        t.description.toLowerCase().includes(query) || 
-        t.id.toLowerCase().includes(query)
+        t && (
+          (t.description && t.description.toLowerCase().includes(query)) || 
+          (t.id && t.id.toLowerCase().includes(query))
+        )
       )
     }
     
@@ -124,17 +161,24 @@ export default function PaymentsPage() {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
       
       filtered = filtered.filter(t => {
-        const transactionDate = new Date(t.date).getTime()
-        if (dateFilter === "today") {
-          return transactionDate >= today
-        } else if (dateFilter === "week") {
-          const weekAgo = today - 7 * 24 * 60 * 60 * 1000
-          return transactionDate >= weekAgo
-        } else if (dateFilter === "month") {
-          const monthAgo = today - 30 * 24 * 60 * 60 * 1000
-          return transactionDate >= monthAgo
+        if (!t || !t.date) return false
+        
+        try {
+          const transactionDate = new Date(t.date).getTime()
+          if (dateFilter === "today") {
+            return transactionDate >= today
+          } else if (dateFilter === "week") {
+            const weekAgo = today - 7 * 24 * 60 * 60 * 1000
+            return transactionDate >= weekAgo
+          } else if (dateFilter === "month") {
+            const monthAgo = today - 30 * 24 * 60 * 60 * 1000
+            return transactionDate >= monthAgo
+          }
+          return true
+        } catch (e) {
+          console.error("Error parsing date:", t.date, e)
+          return false
         }
-        return true
       })
     }
     
@@ -163,7 +207,7 @@ export default function PaymentsPage() {
               <Skeleton className="h-8 w-24" />
             ) : (
               <>
-                <div className="text-2xl font-bold">¥{paymentData.balance.toLocaleString()}</div>
+                <div className="text-2xl font-bold">¥{paymentData.balance?.toLocaleString() || '0'}</div>
                 <p className="text-xs text-muted-foreground">可提现金额</p>
               </>
             )}
@@ -180,7 +224,7 @@ export default function PaymentsPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold text-green-500">
-                  ¥{paymentData.totalIncome.toLocaleString()}
+                  ¥{paymentData.totalIncome?.toLocaleString() || '0'}
                 </div>
                 <p className="text-xs text-muted-foreground">已完成交易</p>
               </>
@@ -198,7 +242,7 @@ export default function PaymentsPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold text-red-500">
-                  ¥{paymentData.totalExpense.toLocaleString()}
+                  ¥{paymentData.totalExpense?.toLocaleString() || '0'}
                 </div>
                 <p className="text-xs text-muted-foreground">提现金额</p>
               </>
