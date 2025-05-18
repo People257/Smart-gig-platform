@@ -1,8 +1,116 @@
-# 智慧零工平台
+# 智慧零工平台 (ZHLG Platform)
 
-## 智慧零工平台是一个面向零工的一站式解决方案
+A platform that connects workers with employers, enabling easy task management and payments.
 
-智慧零工平台是一个连接雇主与零工（自由职业者/兼职人员）的在线平台。它旨在提供一个高效、安全、便捷的环境，让雇主可以发布短期任务或项目，零工可以找到合适的工作机会。
+## 项目架构 (Project Architecture)
+
+The project is structured with a separate frontend and backend:
+
+- **Frontend**: Next.js 15 application with TypeScript
+- **Backend**: Go (Gin) API server
+
+## 开发环境设置 (Development Setup)
+
+### 后端 (Backend)
+
+1. Navigate to the backend directory:
+   ```
+   cd backend
+   ```
+
+2. Install Go dependencies:
+   ```
+   go mod download
+   ```
+
+3. Run the backend server:
+   ```
+   go run main.go
+   ```
+
+The backend server will run on port 8080 by default.
+
+### 前端 (Frontend)
+
+1. Navigate to the frontend directory:
+   ```
+   cd frontend
+   ```
+
+2. Install Node.js dependencies:
+   ```
+   yarn install
+   ```
+
+3. Create a `.env.local` file with the following configuration:
+   ```
+   NEXT_PUBLIC_API_URL=http://localhost:8080/api
+   ```
+
+4. Run the development server:
+   ```
+   yarn dev
+   ```
+
+For production:
+```
+yarn build
+yarn start
+```
+
+The frontend will run on port 3000 by default.
+
+## 前后端连接 (Frontend-Backend Connection)
+
+The frontend and backend are connected through a REST API:
+
+- The backend exposes RESTful endpoints at `http://localhost:8080/api/`
+- The frontend uses a centralized API service to communicate with the backend
+
+### API 结构 (API Structure)
+
+All frontend API calls are centralized in `frontend/lib/api.ts`, which provides:
+- Standardized error handling
+- Authentication state management
+- Type-safe API interfaces
+
+### 认证流程 (Authentication Flow)
+
+Authentication uses a cookie-based approach:
+1. User logs in through the frontend login page
+2. Backend validates credentials and sets an HTTP-only cookie
+3. Subsequent requests include this cookie automatically
+4. The `AuthProvider` in `frontend/lib/auth-context.tsx` manages the authentication state
+
+## 可用的API端点 (Available API Endpoints)
+
+### 认证 (Auth)
+- `POST /api/auth/send-verification-code` - Send verification code
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `POST /api/auth/logout` - User logout
+
+### 用户 (Users)
+- `GET /api/users/profile` - Get current user profile
+- `PUT /api/users/profile` - Update user profile
+- `POST /api/users/profile/avatar` - Upload user avatar
+
+### 任务 (Tasks)
+- `GET /api/tasks` - List all tasks
+- `POST /api/tasks` - Create new task
+- `GET /api/tasks/:uuid` - Get task details
+- `POST /api/tasks/:uuid/apply` - Apply to a task
+
+### 控制台 (Dashboard)
+- `GET /api/dashboard` - Get dashboard data
+
+### 支付 (Payments)
+- `GET /api/payments` - Get payments data
+- `POST /api/payments/withdraw` - Request withdrawal
+- `POST /api/payments/withdrawal-accounts` - Add withdrawal account
+
+### 管理员 (Admin)
+- `GET /api/admin/dashboard` - Get admin dashboard data
 
 ## ✨ 主要功能
 

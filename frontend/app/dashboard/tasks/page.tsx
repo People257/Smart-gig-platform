@@ -10,40 +10,78 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Clock, Filter, MapPin, Plus, Search, Users } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { tasksApi } from "@/lib/api"
+import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
+
+// Define Task interface
+interface Task {
+  id?: string;
+  uuid?: string;
+  title: string;
+  description: string;
+  status: string;
+  skills?: string[];
+  location?: string;
+  start_date?: string;
+  startDate?: string;
+  end_date?: string;
+  endDate?: string;
+  applicants_count?: number;
+  applicants?: number;
+  hourly_rate?: number;
+  hourlyRate?: number;
+  is_creator?: boolean;
+  is_applicant?: boolean;
+}
 
 export default function TasksPage() {
+  const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [activeTab, setActiveTab] = useState("all")
 
   useEffect(() => {
-    // 这里将调用获取任务列表的API
-    // async function fetchTasks() {
-    //   try {
-    //     const response = await fetch('/api/tasks');
-    //     if (!response.ok) throw new Error('获取任务列表失败');
-    //     const data = await response.json();
-    //     setTasks(data);
-    //   } catch (error) {
-    //     console.error('获取任务列表失败:', error);
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // }
+    fetchTasks()
+  }, [activeTab, statusFilter])
 
-    // fetchTasks();
-
-    // 模拟加载状态
-    const timer = setTimeout(() => {
-      setIsLoading(false)
+  const fetchTasks = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Build query parameters based on filters
+      const params: Record<string, string> = {}
+      
+      if (statusFilter !== "all") {
+        params.status = statusFilter
+      }
+      
+      if (activeTab === "my" && user) {
+        params.user_id = user.id
+      } else if (activeTab === "favorite" && user) {
+        params.favorite = "true"
+      }
+      
+      const { success, data, error } = await tasksApi.getTasks(params)
+      
+      if (success && data) {
+        setTasks(data.tasks || [])
+      } else {
+        toast.error("获取任务列表失败: " + error)
+        setTasks([])
+      }
+    } catch (error) {
+      console.error("获取任务列表失败:", error)
+      toast.error("获取任务列表失败，请稍后重试")
       setTasks([])
-    }, 1500)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-    return () => clearTimeout(timer)
-  }, [])
-
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "recruiting":
         return <Badge className="bg-blue-500">招聘中</Badge>
@@ -59,15 +97,10 @@ export default function TasksPage() {
   }
 
   const filteredTasks = tasks.filter((task) => {
-    // 搜索过滤
-    const matchesSearch =
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchQuery.toLowerCase())
-
-    // 状态过滤
-    const matchesStatus = statusFilter === "all" || task.status === statusFilter
-
-    return matchesSearch && matchesStatus
+    // Apply search filter
+    return searchQuery === "" || 
+      task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.description?.toLowerCase().includes(searchQuery.toLowerCase());
   })
 
   return (
@@ -83,7 +116,7 @@ export default function TasksPage() {
         </Link>
       </div>
 
-      <Tabs defaultValue="all">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="all" className="flex-1 sm:flex-none">
@@ -130,154 +163,134 @@ export default function TasksPage() {
         </div>
 
         <TabsContent value="all" className="space-y-4">
-          {isLoading ? (
-            Array(3)
-              .fill(0)
-              .map((_, i) => (
-                <Card key={i}>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <Skeleton className="h-6 w-48" />
-                      <Skeleton className="h-6 w-16" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-4">
-                      <Skeleton className="h-4 w-full" />
-                      <div className="flex flex-wrap gap-2">
-                        {Array(3)
-                          .fill(0)
-                          .map((_, j) => (
-                            <Skeleton key={j} className="h-6 w-16" />
-                          ))}
-                      </div>
-                      <div className="flex flex-wrap gap-x-6 gap-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-4 w-20" />
-                        <Skeleton className="h-4 w-16" />
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Skeleton className="h-9 w-20" />
-                        <Skeleton className="h-9 w-20" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-          ) : filteredTasks.length > 0 ? (
-            filteredTasks.map((task) => (
-              <Card key={task.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg">{task.title}</CardTitle>
-                    {getStatusBadge(task.status)}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4">
-                    <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {task.skills.map((skill, index) => (
-                        <Badge key={index} variant="secondary">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                      <div className="flex items-center">
-                        <MapPin className="mr-1 h-3.5 w-3.5" />
-                        <span>{task.location}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Calendar className="mr-1 h-3.5 w-3.5" />
-                        <span>
-                          {task.startDate} 至 {task.endDate}
-                        </span>
-                      </div>
-                      <div className="flex items-center">
-                        <Users className="mr-1 h-3.5 w-3.5" />
-                        <span>{task.applicants}人申请</span>
-                      </div>
-                      <div className="flex items-center font-medium">{task.budget}</div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm">
-                        查看详情
-                      </Button>
-                      {task.status === "recruiting" && <Button size="sm">申请任务</Button>}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="rounded-full bg-muted p-3 mb-4">
-                <Search className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium">未找到任务</h3>
-              <p className="text-sm text-muted-foreground mt-1 mb-4">
-                {searchQuery || statusFilter !== "all"
-                  ? "没有符合当前筛选条件的任务，请尝试调整筛选条件"
-                  : "暂无任务数据，您可以发布新任务或浏览任务市场"}
-              </p>
-              {searchQuery || statusFilter !== "all" ? (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSearchQuery("")
-                    setStatusFilter("all")
-                  }}
-                >
-                  清除筛选条件
-                </Button>
-              ) : (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Link href="/dashboard/tasks/create">
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      发布任务
-                    </Button>
-                  </Link>
-                  <Link href="/tasks">
-                    <Button variant="outline">浏览任务市场</Button>
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
+          {renderTaskList()}
         </TabsContent>
-
-        <TabsContent value="my">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="rounded-full bg-muted p-3 mb-4">
-              <Clock className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium">我的任务将在这里显示</h3>
-            <p className="text-sm text-muted-foreground mt-1 mb-4">您可以在这里查看您发布或参与的任务</p>
-            <Link href="/dashboard/tasks/create">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                发布任务
-              </Button>
-            </Link>
-          </div>
+        <TabsContent value="my" className="space-y-4">
+          {renderTaskList()}
         </TabsContent>
-
-        <TabsContent value="favorite">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="rounded-full bg-muted p-3 mb-4">
-              <Clock className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium">收藏的任务将在这里显示</h3>
-            <p className="text-sm text-muted-foreground mt-1 mb-4">您可以收藏感兴趣的任务以便稍后查看</p>
-            <Link href="/tasks">
-              <Button variant="outline">浏览任务市场</Button>
-            </Link>
-          </div>
+        <TabsContent value="favorite" className="space-y-4">
+          {renderTaskList()}
         </TabsContent>
       </Tabs>
     </div>
   )
+
+  function renderTaskList() {
+    if (isLoading) {
+      return Array(3)
+        .fill(0)
+        .map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-6 w-16" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                <Skeleton className="h-4 w-full" />
+                <div className="flex flex-wrap gap-2">
+                  {Array(3)
+                    .fill(0)
+                    .map((_, j) => (
+                      <Skeleton key={j} className="h-6 w-16" />
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Skeleton className="h-9 w-20" />
+                  <Skeleton className="h-9 w-20" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+    }
+    
+    if (filteredTasks.length === 0) {
+      return (
+        <div className="text-center py-10">
+          <p className="text-muted-foreground">暂无任务数据</p>
+        </div>
+      )
+    }
+    
+    return filteredTasks.map((task) => (
+      <Card key={task.id || task.uuid}>
+        <CardHeader className="pb-2">
+          <div className="flex justify-between items-start">
+            <CardTitle className="text-lg">{task.title}</CardTitle>
+            {getStatusBadge(task.status)}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4">
+            <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+            <div className="flex flex-wrap gap-2">
+              {(task.skills || []).map((skill, index) => (
+                <Badge key={index} variant="secondary">
+                  {skill}
+                </Badge>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center">
+                <MapPin className="mr-1 h-3.5 w-3.5" />
+                <span>{task.location || "线上"}</span>
+              </div>
+              <div className="flex items-center">
+                <Calendar className="mr-1 h-3.5 w-3.5" />
+                <span>
+                  {task.start_date || task.startDate || "未设置"} 至 {task.end_date || task.endDate || "未设置"}
+                </span>
+              </div>
+              <div className="flex items-center">
+                <Users className="mr-1 h-3.5 w-3.5" />
+                <span>{task.applicants_count || task.applicants || 0}人申请</span>
+              </div>
+              <div className="flex items-center">
+                <Clock className="mr-1 h-3.5 w-3.5" />
+                <span>¥{task.hourly_rate || task.hourlyRate || 0}/小时</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Link href={`/dashboard/tasks/${task.id || task.uuid}`}>
+                <Button variant="outline">查看详情</Button>
+              </Link>
+              {task.status === "recruiting" && !task.is_creator && !task.is_applicant && (
+                <Button onClick={() => handleApplyTask(task.id || task.uuid)}>申请任务</Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    ))
+  }
+  
+  async function handleApplyTask(taskId: string | undefined) {
+    if (!taskId) {
+      toast.error("任务ID无效，无法申请");
+      return;
+    }
+    
+    try {
+      const { success, message, error } = await tasksApi.applyToTask(taskId, {});
+      
+      if (success) {
+        toast.success(message || "申请成功，请等待雇主审核");
+        fetchTasks(); // Refresh the task list
+      } else {
+        toast.error(error || "申请失败，请稍后重试");
+      }
+    } catch (error) {
+      console.error("申请任务失败:", error);
+      toast.error("申请失败，请稍后重试");
+    }
+  }
 }

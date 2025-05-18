@@ -9,16 +9,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Briefcase } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
+import { authApi } from "@/lib/api"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { toast } = useToast()
+  const { login } = useAuth()
 
-  const [activeTab, setActiveTab] = useState("phone")
+  const [activeTab, setActiveTab] = useState("username")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [verificationCode, setVerificationCode] = useState("")
-  const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [countdown, setCountdown] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
@@ -27,36 +29,24 @@ export default function LoginPage() {
     if (phoneNumber.length === 11) {
       try {
         setIsLoading(true)
-        // 这里将调用发送验证码的API
-        // const response = await fetch('/api/auth/send-verification-code', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ phoneNumber })
-        // });
-
-        // if (!response.ok) throw new Error('发送验证码失败');
-
-        setCountdown(60)
-        const timer = setInterval(() => {
-          setCountdown((prev) => {
-            if (prev <= 1) {
-              clearInterval(timer)
-              return 0
-            }
-            return prev - 1
-          })
-        }, 1000)
-
-        toast({
-          title: "验证码已发送",
-          description: "请查看您的手机短信",
-        })
+        const { success, message } = await authApi.sendVerificationCode({ phone: phoneNumber });
+        
+        if (success) {
+          setCountdown(60)
+          const timer = setInterval(() => {
+            setCountdown((prev) => {
+              if (prev <= 1) {
+                clearInterval(timer)
+                return 0
+              }
+              return prev - 1
+            })
+          }, 1000)
+          
+          toast.success(message || "验证码已发送，请查看您的手机短信");
+        }
       } catch (error) {
-        toast({
-          title: "发送失败",
-          description: error.message,
-          variant: "destructive",
-        })
+        toast.error("发送验证码失败: " + (error.message || "未知错误"));
       } finally {
         setIsLoading(false)
       }
@@ -68,35 +58,20 @@ export default function LoginPage() {
 
     try {
       setIsLoading(true)
-      // 这里将调用登录API
-      // const response = await fetch('/api/auth/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     method: activeTab,
-      //     phoneNumber: activeTab === 'phone' ? phoneNumber : undefined,
-      //     verificationCode: activeTab === 'phone' ? verificationCode : undefined,
-      //     username: activeTab === 'username' ? username : undefined,
-      //     password: activeTab === 'username' ? password : undefined,
-      //   })
-      // });
+      
+      let success = false;
+      
+      if (activeTab === "phone") {
+        toast.error("手机号登录暂未实现，请使用用户名密码登录");
+      } else {
+        success = await login(email, password);
+      }
 
-      // if (!response.ok) throw new Error('登录失败');
-      // const data = await response.json();
-
-      toast({
-        title: "登录成功",
-        description: "欢迎回到智慧零工平台",
-      })
-
-      // 登录成功后跳转到控制台
-      router.push("/dashboard")
+      if (success) {
+        router.push("/dashboard");
+      }
     } catch (error) {
-      toast({
-        title: "登录失败",
-        description: error.message,
-        variant: "destructive",
-      })
+      toast.error("登录失败: " + (error.message || "未知错误"));
     } finally {
       setIsLoading(false)
     }
@@ -130,7 +105,7 @@ export default function LoginPage() {
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="phone">手机号登录</TabsTrigger>
-                  <TabsTrigger value="username">用户名登录</TabsTrigger>
+                  <TabsTrigger value="username">邮箱登录</TabsTrigger>
                 </TabsList>
                 <TabsContent value="phone" className="space-y-4">
                   <div className="space-y-2">
@@ -166,12 +141,13 @@ export default function LoginPage() {
                 </TabsContent>
                 <TabsContent value="username" className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="username">用户名</Label>
+                    <Label htmlFor="email">邮箱</Label>
                     <Input
-                      id="username"
-                      placeholder="请输入用户名"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      id="email"
+                      type="email"
+                      placeholder="请输入邮箱"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -200,17 +176,19 @@ export default function LoginPage() {
               disabled={
                 isLoading ||
                 (activeTab === "phone" && (phoneNumber.length !== 11 || !verificationCode)) ||
-                (activeTab === "username" && (!username || !password))
+                (activeTab === "username" && (!email || !password))
               }
             >
               {isLoading ? "登录中..." : "登录"}
             </Button>
           </CardFooter>
-          <div className="px-6 pb-6 text-center text-sm">
-            还没有账号？
-            <Link href="/register" className="text-primary hover:underline ml-1">
-              注册
-            </Link>
+          <div className="px-8 pb-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              还没有账号？{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                立即注册
+              </Link>
+            </p>
           </div>
         </Card>
       </main>
