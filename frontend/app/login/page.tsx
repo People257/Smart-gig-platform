@@ -13,7 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Briefcase } from "lucide-react"
+import { ArrowLeft, Briefcase, Mail, Phone, User } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { authApi } from "@/lib/api"
@@ -36,21 +36,49 @@ const phoneSchema = z.object({
   }),
 })
 
+const emailSchema = z.object({
+  email: z.string().email({
+    message: "Please enter a valid email address.",
+  }),
+  password: z.string().min(6, {
+    message: "Password must be at least 6 characters.",
+  }).optional(),
+  verification_code: z.string().min(4, {
+    message: "Verification code must be at least 4 characters.",
+  }).optional(),
+}).refine(data => data.password || data.verification_code, {
+  message: "Either password or verification code is required",
+  path: ["verification_code"],
+});
+
 export default function LoginPage() {
   const { toast } = useToast()
   const router = useRouter()
   const { login } = useAuth()
-  const [loginMethod, setLoginMethod] = useState<"username" | "phone">("username")
-  const [isSendingCode, setIsSendingCode] = useState(false)
-  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [loginMethod, setLoginMethod] = useState<"username" | "phone" | "email">("username")
+  
+  // Phone verification state
+  const [isSendingPhoneCode, setIsSendingPhoneCode] = useState(false)
   const [phoneNumber, setPhoneNumber] = useState("")
-  const [verificationCode, setVerificationCode] = useState("")
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState("")
+  const [phoneCountdown, setPhoneCountdown] = useState(0)
+  
+  // Email verification state
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false)
+  const [email, setEmail] = useState("")
+  const [emailPassword, setEmailPassword] = useState("")
+  const [emailVerificationCode, setEmailVerificationCode] = useState("")
+  const [emailCountdown, setEmailCountdown] = useState(0)
+  const [emailLoginWithPassword, setEmailLoginWithPassword] = useState(true)
+  
+  // Login state
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  // 调试输出
+  // Debug output
   useEffect(() => {
     console.log("API URL:", process.env.NEXT_PUBLIC_API_URL)
     
-    // 检查后端连接
+    // Check backend connection
     import('@/lib/utils').then(({ checkBackendConnection }) => {
       checkBackendConnection().then(result => {
         console.log("Backend connection check:", result);
@@ -73,7 +101,7 @@ export default function LoginPage() {
     },
   })
 
-  const handleSendCode = async () => {
+  const handleSendPhoneCode = async () => {
     if (!phoneNumber || phoneNumber.length < 11) {
       toast({
         variant: "destructive",
@@ -84,15 +112,24 @@ export default function LoginPage() {
     }
 
     try {
-      setIsSendingCode(true)
-      console.log("Sending verification code to:", phoneNumber)
+      setIsSendingPhoneCode(true)
       
       const response = await authApi.sendVerificationCode({
         phone_number: phoneNumber,
+        target: "phone",
         method: "login",
       })
       
-      console.log("Verification code response:", response)
+      setPhoneCountdown(60)
+      const timer = setInterval(() => {
+        setPhoneCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
       
       toast({
         title: "Verification code sent",
@@ -106,18 +143,65 @@ export default function LoginPage() {
         description: "Please try again later",
       })
     } finally {
-      setIsSendingCode(false)
+      setIsSendingPhoneCode(false)
+    }
+  }
+  
+  const handleSendEmailCode = async () => {
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      toast({
+        variant: "destructive",
+        title: "Invalid email address",
+        description: "Please enter a valid email address",
+      })
+      return
+    }
+
+    try {
+      setIsSendingEmailCode(true)
+      
+      const response = await authApi.sendVerificationCode({
+        email: email,
+        target: "email",
+        method: "login",
+      })
+      
+      setEmailCountdown(60)
+      const timer = setInterval(() => {
+        setEmailCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      
+      toast({
+        title: "Verification code sent",
+        description: "Please check your email for the verification code",
+      })
+    } catch (error) {
+      console.error("Error sending verification code:", error)
+      toast({
+        variant: "destructive",
+        title: "Failed to send verification code",
+        description: "Please try again later",
+      })
+    } finally {
+      setIsSendingEmailCode(false)
     }
   }
 
-  const handleLogin = async (method: "username" | "phone", data?: any) => {
+  const handleLogin = async (method: "username" | "phone" | "email", data?: any) => {
     try {
       setIsLoggingIn(true)
       let loginData: {
-        method: "username" | "phone";
+        method: string;
         username?: string;
         password?: string;
         phone_number?: string;
+        email?: string;
         verification_code?: string;
       }
       
@@ -128,21 +212,34 @@ export default function LoginPage() {
           password: data.password,
           method: "username",
         }
-      } else {
-        console.log("Attempting phone login with:", { phone_number: phoneNumber, verification_code: verificationCode })
+      } else if (method === "phone") {
+        console.log("Attempting phone login with:", { phone_number: phoneNumber, verification_code: phoneVerificationCode })
         loginData = {
           phone_number: phoneNumber,
-          verification_code: verificationCode,
+          verification_code: phoneVerificationCode,
           method: "phone",
+        }
+      } else { // email
+        console.log("Attempting email login with:", { 
+          email, 
+          password: emailLoginWithPassword ? emailPassword : undefined,
+          verification_code: emailLoginWithPassword ? undefined : emailVerificationCode 
+        })
+        loginData = {
+          email: email,
+          method: "email",
+          ...(emailLoginWithPassword 
+            ? { password: emailPassword }
+            : { verification_code: emailVerificationCode })
         }
       }
       
       console.log("Login data being sent:", loginData)
       
-      // 直接调用API以确保请求发送
-      console.log("直接调用authApi.login")
+      // Call API directly to ensure the request is sent
+      console.log("Calling authApi.login")
       const response = await authApi.login(loginData)
-      console.log("直接API调用返回:", response)
+      console.log("API response:", response)
       
       if (response.success && response.data?.user) {
         const user = response.data.user
@@ -153,7 +250,7 @@ export default function LoginPage() {
           description: "You have been logged in successfully",
         })
         
-        // 仍然使用context以保持状态同步
+        // Use context to keep state synchronized
         await login(loginData)
         
         router.push("/dashboard")
@@ -165,7 +262,9 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Login failed",
-        description: typeof error === 'string' ? error : "Please check your credentials and try again",
+        description: typeof error === 'string' ? error : 
+          error instanceof Error ? error.message : 
+          "Please check your credentials and try again",
       })
     } finally {
       setIsLoggingIn(false)
@@ -188,7 +287,7 @@ export default function LoginPage() {
       return
     }
     
-    if (!verificationCode || verificationCode.length < 4) {
+    if (!phoneVerificationCode || phoneVerificationCode.length < 4) {
       toast({
         variant: "destructive",
         title: "Invalid verification code",
@@ -200,46 +299,39 @@ export default function LoginPage() {
     await handleLogin("phone")
   }
   
-  // 直接测试API调用
-  const testDirectApiCall = async () => {
-    try {
-      console.log("Testing direct API call")
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: "testuser",
-          password: "password123",
-          method: "username",
-        }),
-      })
-      
-      console.log("Direct API call response status:", response.status)
-      const data = await response.json()
-      console.log("Direct API call response data:", data)
-      
-      if (response.ok) {
-        toast({
-          title: "API测试成功",
-          description: "登录API调用成功，请查看控制台日志",
-        })
-      } else {
-        toast({
-          variant: "destructive",
-          title: "API测试失败",
-          description: data.error || "未知错误",
-        })
-      }
-    } catch (error) {
-      console.error("Direct API call error:", error)
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!email || !email.includes('@') || !email.includes('.')) {
       toast({
         variant: "destructive",
-        title: "API调用错误",
-        description: error instanceof Error ? error.message : "网络错误",
+        title: "Invalid email address",
+        description: "Please enter a valid email address",
       })
+      return
     }
+    
+    if (emailLoginWithPassword) {
+      if (!emailPassword || emailPassword.length < 6) {
+        toast({
+          variant: "destructive",
+          title: "Invalid password",
+          description: "Please enter a valid password (at least 6 characters)",
+        })
+        return
+      }
+    } else {
+      if (!emailVerificationCode || emailVerificationCode.length < 4) {
+        toast({
+          variant: "destructive",
+          title: "Invalid verification code",
+          description: "Please enter a valid verification code",
+        })
+        return
+      }
+    }
+    
+    await handleLogin("email")
   }
 
   return (
@@ -255,22 +347,25 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Link href="/">
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
-              <CardTitle>登录账号</CardTitle>
-            </div>
-            <CardDescription>请选择登录方式并填写信息</CardDescription>
+            <CardTitle>登录</CardTitle>
+            <CardDescription>
+              请选择登录方式
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue={loginMethod} onValueChange={(value) => setLoginMethod(value as "username" | "phone")}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="username">Username</TabsTrigger>
-                <TabsTrigger value="phone">Phone</TabsTrigger>
+            <Tabs defaultValue={loginMethod} onValueChange={(v) => setLoginMethod(v as any)}>
+              <TabsList className="grid w-full grid-cols-3 mb-6">
+                <TabsTrigger value="username" className="flex items-center gap-2">
+                  <User className="h-4 w-4" /> 用户名
+                </TabsTrigger>
+                <TabsTrigger value="email" className="flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> 邮箱
+                </TabsTrigger>
+                <TabsTrigger value="phone" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4" /> 手机号
+                </TabsTrigger>
               </TabsList>
+
               <TabsContent value="username">
                 <Form {...usernameForm}>
                   <form onSubmit={usernameForm.handleSubmit(handleUsernameSubmit)} className="space-y-4">
@@ -279,9 +374,9 @@ export default function LoginPage() {
                       name="username"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Username</FormLabel>
+                          <FormLabel>用户名</FormLabel>
                           <FormControl>
-                            <Input placeholder="Enter your username" {...field} />
+                            <Input placeholder="输入您的用户名" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -292,77 +387,132 @@ export default function LoginPage() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Password</FormLabel>
+                          <FormLabel>密码</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="Enter your password" {...field} />
+                            <Input type="password" placeholder="输入您的密码" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                     <Button type="submit" className="w-full" disabled={isLoggingIn}>
-                      {isLoggingIn ? "Logging in..." : "Login"}
+                      {isLoggingIn ? "登录中..." : "登录"}
                     </Button>
                   </form>
                 </Form>
               </TabsContent>
+              
+              <TabsContent value="email">
+                <form onSubmit={handleEmailSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <FormLabel>邮箱地址</FormLabel>
+                    <Input 
+                      type="email"
+                      placeholder="输入您的邮箱地址"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 text-sm">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      className={emailLoginWithPassword ? "bg-primary/10" : ""}
+                      onClick={() => setEmailLoginWithPassword(true)}
+                    >
+                      使用密码登录
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      className={!emailLoginWithPassword ? "bg-primary/10" : ""}
+                      onClick={() => setEmailLoginWithPassword(false)}
+                    >
+                      使用验证码登录
+                    </Button>
+                  </div>
+                  
+                  {emailLoginWithPassword ? (
+                    <div className="space-y-2">
+                      <FormLabel>密码</FormLabel>
+                      <Input 
+                        type="password"
+                        placeholder="输入您的密码"
+                        value={emailPassword}
+                        onChange={(e) => setEmailPassword(e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <FormLabel>验证码</FormLabel>
+                      <div className="flex space-x-2">
+                        <Input 
+                          placeholder="输入验证码"
+                          value={emailVerificationCode}
+                          onChange={(e) => setEmailVerificationCode(e.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleSendEmailCode}
+                          disabled={isSendingEmailCode || emailCountdown > 0 || !email || !email.includes('@')}
+                        >
+                          {emailCountdown > 0 ? `${emailCountdown}s` : (isSendingEmailCode ? "发送中..." : "获取验证码")}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Button type="submit" className="w-full mt-6" disabled={isLoggingIn}>
+                    {isLoggingIn ? "登录中..." : "登录"}
+                  </Button>
+                </form>
+              </TabsContent>
+              
               <TabsContent value="phone">
                 <form onSubmit={handlePhoneSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <FormLabel htmlFor="phone">Phone Number</FormLabel>
+                    <FormLabel>手机号</FormLabel>
+                    <Input 
+                      placeholder="输入您的手机号"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <FormLabel>验证码</FormLabel>
                     <div className="flex space-x-2">
-                      <Input
-                        id="phone"
-                        placeholder="Enter your phone number"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
+                      <Input 
+                        placeholder="输入验证码"
+                        value={phoneVerificationCode}
+                        onChange={(e) => setPhoneVerificationCode(e.target.value)}
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={handleSendCode}
-                        disabled={isSendingCode}
+                        onClick={handleSendPhoneCode}
+                        disabled={isSendingPhoneCode || phoneCountdown > 0 || phoneNumber.length < 11}
                       >
-                        {isSendingCode ? "Sending..." : "Send Code"}
+                        {phoneCountdown > 0 ? `${phoneCountdown}s` : (isSendingPhoneCode ? "发送中..." : "获取验证码")}
                       </Button>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <FormLabel htmlFor="code">Verification Code</FormLabel>
-                    <Input
-                      id="code"
-                      placeholder="Enter verification code"
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value)}
-                    />
-                  </div>
+                  
                   <Button type="submit" className="w-full" disabled={isLoggingIn}>
-                    {isLoggingIn ? "Logging in..." : "Login"}
+                    {isLoggingIn ? "登录中..." : "登录"}
                   </Button>
                 </form>
               </TabsContent>
             </Tabs>
-            
-            {/* 添加一个测试按钮 */}
-            <div className="mt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="w-full"
-                onClick={testDirectApiCall}
-              >
-                Test Direct API Call
-              </Button>
-            </div>
           </CardContent>
-          <CardFooter>
-            <Button
-              className="w-full"
-              type="button"
-              onClick={() => router.push("/register")}
-            >
-              Register
-            </Button>
+          <CardFooter className="flex justify-center">
+            <div className="text-sm">
+              没有账号? <Link href="/register" className="text-blue-600 hover:underline">注册账户</Link>
+            </div>
           </CardFooter>
         </Card>
       </main>

@@ -5,11 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"zhlg/backend/db"
 	"zhlg/backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // UpdateUserProfileRequest represents the request body for updating a user profile
@@ -208,4 +211,192 @@ func UploadAvatar(c *gin.Context) {
 		"message":    "头像上传成功",
 		"avatar_url": "/uploads/avatars/" + filename,
 	})
+}
+
+// UpdateUserSettings updates a user's settings
+func UpdateUserSettings(c *gin.Context) {
+	// Get the authenticated user
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
+	authUser := user.(*models.User)
+
+	// Parse request body
+	var req struct {
+		Username          *string         `json:"username"`
+		Email             *string         `json:"email"`
+		PhoneNumber       *string         `json:"phone_number"`
+		NotificationPrefs map[string]bool `json:"notification_preferences"`
+		PrivacySettings   map[string]bool `json:"privacy_settings"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
+		return
+	}
+
+	// Check for username changes
+	if req.Username != nil && *req.Username != "" {
+		// Check if username already exists
+		if authUser.Username == nil || *authUser.Username != *req.Username {
+			var existingUser models.User
+			result := db.DB.Where("username = ? AND id != ?", *req.Username, authUser.ID).First(&existingUser)
+			if result.Error == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "用户名已被使用"})
+				return
+			} else if result.Error != gorm.ErrRecordNotFound {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "检查用户名失败"})
+				return
+			}
+		}
+		authUser.Username = req.Username
+	}
+
+	// Check for email changes
+	if req.Email != nil && *req.Email != "" {
+		if authUser.Email == nil || *authUser.Email != *req.Email {
+			// Validate email format
+			if !strings.Contains(*req.Email, "@") || !strings.Contains(*req.Email, ".") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+				return
+			}
+
+			// Check if email already exists
+			var existingUser models.User
+			result := db.DB.Where("email = ? AND id != ?", *req.Email, authUser.ID).First(&existingUser)
+			if result.Error == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被使用"})
+				return
+			} else if result.Error != gorm.ErrRecordNotFound {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "检查邮箱失败"})
+				return
+			}
+		}
+		authUser.Email = req.Email
+	}
+
+	// Check for phone number changes
+	if req.PhoneNumber != nil && *req.PhoneNumber != "" {
+		if authUser.PhoneNumber == nil || *authUser.PhoneNumber != *req.PhoneNumber {
+			// Validate phone number format
+			if len(*req.PhoneNumber) != 11 || !strings.HasPrefix(*req.PhoneNumber, "1") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
+				return
+			}
+
+			// Check if phone number already exists
+			var existingUser models.User
+			result := db.DB.Where("phone_number = ? AND id != ?", *req.PhoneNumber, authUser.ID).First(&existingUser)
+			if result.Error == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "手机号已被使用"})
+				return
+			} else if result.Error != gorm.ErrRecordNotFound {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "检查手机号失败"})
+				return
+			}
+		}
+		authUser.PhoneNumber = req.PhoneNumber
+	}
+
+	// Update user in database
+	result := db.DB.Save(authUser)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新用户设置失败"})
+		return
+	}
+
+	// Return the updated user data
+	c.JSON(http.StatusOK, gin.H{
+		"message": "用户设置已更新",
+		"user": gin.H{
+			"uuid":       authUser.UUID,
+			"username":   authUser.Username,
+			"email":      authUser.Email,
+			"phone":      authUser.PhoneNumber,
+			"user_type":  authUser.UserType,
+			"name":       authUser.Name,
+			"avatar_url": authUser.AvatarURL,
+		},
+	})
+}
+
+// ChangePassword handles changing a user's password
+func ChangePassword(c *gin.Context) {
+	// Get the authenticated user
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
+	authUser := user.(*models.User)
+
+	// Parse request body
+	var req struct {
+		CurrentPassword string `json:"current_password" binding:"required"`
+		NewPassword     string `json:"new_password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
+		return
+	}
+
+	// Verify current password
+	if authUser.PasswordHash == nil || *authUser.PasswordHash != req.CurrentPassword {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "当前密码不正确"})
+		return
+	}
+
+	// Validate new password
+	if len(req.NewPassword) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "新密码至少需要6个字符"})
+		return
+	}
+
+	// Update password
+	newPassword := req.NewPassword
+	authUser.PasswordHash = &newPassword
+
+	// Save to database
+	result := db.DB.Save(authUser)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新密码失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "密码已成功更新"})
+}
+
+// DeleteAccount handles account deletion
+func DeleteAccount(c *gin.Context) {
+	// Get the authenticated user
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
+	authUser := user.(*models.User)
+
+	// Soft delete the user
+	result := db.DB.Delete(authUser)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除账户失败"})
+		return
+	}
+
+	// Invalidate any tokens by adding to blacklist
+	// Extract the token
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		invalidatedToken := models.InvalidatedToken{
+			Token:     token,
+			ExpiresAt: time.Now().Add(24 * time.Hour), // Assuming token validity period is 24 hours
+		}
+		db.DB.Create(&invalidatedToken)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "账户已成功删除"})
 }

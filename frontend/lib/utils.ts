@@ -5,26 +5,49 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// 检查后端API连接状态
-export async function checkBackendConnection() {
+/**
+ * Check if the backend API is reachable
+ */
+export async function checkBackendConnection(): Promise<{connected: boolean, status?: number, message?: string}> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+  
   try {
-    console.log("Testing direct connection to backend...")
-    // 简单的OPTIONS请求，不需要身份验证
-    const response = await fetch('/api/auth/login', {
-      method: 'OPTIONS',
+    const start = Date.now();
+    const response = await fetch(`${API_URL}/health`, { 
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors',
+      cache: 'no-cache',
+      credentials: 'same-origin',
+      redirect: 'follow',
+      referrerPolicy: 'no-referrer',
     });
     
-    console.log(`Backend connection test result: ${response.status} ${response.statusText}`);
-    return {
-      connected: response.ok,
-      status: response.status,
-      statusText: response.statusText
+    const elapsed = Date.now() - start;
+    const status = response.status;
+    
+    if (response.ok) {
+      console.log(`Backend API is reachable, status: ${status}, response time: ${elapsed}ms`);
+      return { 
+        connected: true,
+        status,
+        message: `Backend API connected in ${elapsed}ms`
+      };
+    }
+    
+    console.warn(`Backend API returned status ${status}, response time: ${elapsed}ms`);
+    return { 
+      connected: false,
+      status,
+      message: `Backend API returned status ${status}`
     };
   } catch (error) {
-    console.error("Backend connection test failed:", error);
-    return {
+    console.error("Error connecting to backend API:", error);
+    return { 
       connected: false,
-      error: error instanceof Error ? error.message : String(error)
+      message: error instanceof Error ? error.message : "Unknown error" 
     };
   }
 }

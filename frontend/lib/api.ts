@@ -255,71 +255,76 @@ async function fetchApi<T>(
   }
 }
 
-// Auth API
+// Authentication API
 export const authApi = {
-  // Send verification code
-  sendVerificationCode: async (data: { 
-    phone_number: string;
-    method: "login" | "register"; 
+  register: async (registerData: {
+    method: string;
+    user_type: string;
+    username?: string;
+    password?: string;
+    phone_number?: string;
+    email?: string;
+    verification_code?: string;
+    name?: string;
+  }) => {
+    console.log("Calling register API:", registerData);
+    const response = await fetchApi<{ user: any; token: string }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(registerData),
+    });
+    
+    // If registration is successful, save the token
+    if (response.success && response.data?.token) {
+      saveAuthToken(response.data.token);
+    }
+    
+    return response;
+  },
+  
+  login: async (loginData: {
+    method: string;
+    username?: string;
+    password?: string;
+    phone_number?: string;
+    email?: string;
+    verification_code?: string;
+  }) => {
+    console.log("Calling login API:", loginData);
+    const response = await fetchApi<{ user: any; token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(loginData),
+    });
+    
+    // If login is successful, save the token
+    if (response.success && response.data?.token) {
+      saveAuthToken(response.data.token);
+    }
+    
+    return response;
+  },
+  
+  sendVerificationCode: async (data: {
+    phone_number?: string;
+    email?: string;
+    method: string;
+    target: string;
   }) => {
     console.log("Calling sendVerificationCode API:", data);
-    return fetchApi<{ sent: boolean }>("/auth/send-verification-code", {
+    // Use the updated endpoint that matches the backend
+    return fetchApi<{ message: string }>("/auth/verification-code", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
   
-  // Login
-  login: async (loginData: {
-    method: "username" | "phone";
-    username?: string;
-    password?: string;
-    phone_number?: string;
-    verification_code?: string;
-  }) => {
-    console.log("Calling login API:", loginData);
-    const response = await fetchApi<{ token: string; user: any }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify(loginData),
-    });
-    
-    // If login is successful and we have a token, store it
-    if (response.success && response.data?.token) {
-      saveAuthToken(response.data.token);
-    }
-    
-    return response;
-  },
-  
-  // Register
-  register: async (registerData: {
-    user_type: string;
-    method: "username" | "phone";
-    username?: string;
-    password?: string;
-    phone_number?: string;
-    verification_code?: string;
-  }) => {
-    console.log("Calling register API:", registerData);
-    const response = await fetchApi<{ token: string; user: any }>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify(registerData),
-    });
-    
-    // If registration is successful and we have a token, store it
-    if (response.success && response.data?.token) {
-      saveAuthToken(response.data.token);
-    }
-    
-    return response;
-  },
-  
-  // Logout
   logout: async () => {
     console.log("Calling logout API");
-    const response = await fetchApi("/auth/logout", { method: "POST" });
+    // Call the API endpoint to invalidate token on the server
+    const response = await fetchApi<{ success: boolean }>("/auth/logout", {
+      method: "POST",
+    });
     
-    // Remove token regardless of logout API response
+    // Always remove the token from client storage regardless of API response
     removeAuthToken();
     
     return response;

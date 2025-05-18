@@ -18,30 +18,35 @@ import (
 
 // SendVerificationCodeRequest represents the request body for sending a verification code
 type SendVerificationCodeRequest struct {
-	PhoneNumber string `json:"phone_number" binding:"required"`
+	PhoneNumber string `json:"phone_number"`
+	Email       string `json:"email"`
 	Method      string `json:"method" binding:"required,oneof=login register"`
+	Target      string `json:"target" binding:"required,oneof=phone email"`
 }
 
 // RegisterRequest represents the request body for user registration
 type RegisterRequest struct {
 	UserType         string `json:"user_type" binding:"required,oneof=worker employer"`
-	Method           string `json:"method" binding:"required,oneof=username phone"`
+	Method           string `json:"method" binding:"required,oneof=username phone email"`
 	PhoneNumber      string `json:"phone_number"`
 	VerificationCode string `json:"verification_code"`
 	Username         string `json:"username"`
 	Password         string `json:"password"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
 }
 
 // LoginRequest represents the request body for user login
 type LoginRequest struct {
-	Method           string `json:"method" binding:"required,oneof=username phone"`
+	Method           string `json:"method" binding:"required,oneof=username phone email"`
 	PhoneNumber      string `json:"phone_number"`
+	Email            string `json:"email"`
 	VerificationCode string `json:"verification_code"`
 	Username         string `json:"username"`
 	Password         string `json:"password"`
 }
 
-// SendVerificationCode handles sending verification codes to users' phones
+// SendVerificationCode handles sending verification codes to users' phones or emails
 func SendVerificationCode(c *gin.Context) {
 	var req SendVerificationCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,9 +54,37 @@ func SendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	// Validate phone number format (simplified example)
-	if len(req.PhoneNumber) != 11 || !strings.HasPrefix(req.PhoneNumber, "1") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
+	var target string
+
+	// Determine target based on request
+	if req.Target == "phone" {
+		if req.PhoneNumber == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "手机号不能为空"})
+			return
+		}
+
+		// Validate phone number format (simplified example)
+		if len(req.PhoneNumber) != 11 || !strings.HasPrefix(req.PhoneNumber, "1") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
+			return
+		}
+
+		target = req.PhoneNumber
+	} else if req.Target == "email" {
+		if req.Email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱不能为空"})
+			return
+		}
+
+		// Simple email validation
+		if !strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+			return
+		}
+
+		target = req.Email
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的验证码发送目标"})
 		return
 	}
 
@@ -69,7 +102,7 @@ func SendVerificationCode(c *gin.Context) {
 
 	// Create verification code record
 	verificationCode := models.VerificationCode{
-		Target:    req.PhoneNumber,
+		Target:    target,
 		Code:      code,
 		Type:      codeType,
 		ExpiresAt: time.Now().Add(10 * time.Minute), // Code expires in 10 minutes
@@ -82,10 +115,13 @@ func SendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	// Return the code in response
+	// TODO: In production, send the code via SMS or Email
+	// For now, just return it in the response
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "验证码已发送",
 		"code":    code, // Remove this line in production
+		"target":  target,
 	})
 }
 
@@ -111,8 +147,15 @@ func Register(c *gin.Context) {
 
 	// Create a new user
 	user := models.User{
-		UUID:     uuid.New().String(),
-		UserType: userType,
+		UUID:                     uuid.New().String(),
+		UserType:                 userType,
+		IdentityVerificationDocs: "[]", // Using empty JSON array instead of empty string
+	}
+
+	// Set name if provided
+	if req.Name != "" {
+		name := req.Name
+		user.Name = &name
 	}
 
 	// Process registration based on method
@@ -166,6 +209,79 @@ func Register(c *gin.Context) {
 		user.PhoneNumber = &phoneNumber
 		user.PhoneVerifiedAt = &now
 
+	} else if req.Method == "email" {
+		// Email registration: validate email and verification code
+		if req.Email == "" || req.VerificationCode == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": "邮箱和验证码不能为空"})
+			return
+		}
+
+		// Validate email format with a simple check
+		if !strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+			return
+		}
+
+		// Check if email is already registered
+		var existingUser models.User
+		result := db.DB.Where("email = ?", req.Email).First(&existingUser)
+		if result.Error == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被注册"})
+			return
+		} else if result.Error != gorm.ErrRecordNotFound {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
+			return
+		}
+
+		// Verify the code
+		var verificationCode models.VerificationCode
+		result = db.DB.Where(
+			"target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL",
+			req.Email, req.VerificationCode, models.VerificationCodeTypeRegister, time.Now(),
+		).First(&verificationCode)
+
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "验证码无效或已过期"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "验证码验证失败"})
+			}
+			return
+		}
+
+		// Mark the verification code as used
+		now := time.Now()
+		verificationCode.UsedAt = &now
+		db.DB.Save(&verificationCode)
+
+		// Set the email and mark as verified
+		email := req.Email
+		user.Email = &email
+		user.EmailVerifiedAt = &now
+
+		// If password is provided, also set username
+		if req.Password != "" && len(req.Password) >= 6 {
+			// Set username if not provided (use email prefix as default)
+			username := req.Username
+			if username == "" {
+				parts := strings.Split(req.Email, "@")
+				username = parts[0]
+				// Check if this username already exists
+				var existingUser models.User
+				result := db.DB.Where("username = ?", username).First(&existingUser)
+				if result.Error == nil {
+					// Add random suffix to make username unique
+					rand.Seed(time.Now().UnixNano())
+					username = username + fmt.Sprintf("%04d", rand.Intn(10000))
+				}
+			}
+			user.Username = &username
+
+			// Hash password (in production, use a proper hashing algorithm)
+			password := req.Password
+			user.PasswordHash = &password
+		}
+
 	} else if req.Method == "username" {
 		// Username registration: validate username and password
 		if req.Username == "" || req.Password == "" {
@@ -201,6 +317,27 @@ func Register(c *gin.Context) {
 		password := req.Password // 实际项目中应该哈希密码
 		user.Username = &username
 		user.PasswordHash = &password
+
+		// If email is provided, store it as well
+		if req.Email != "" {
+			if !strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+				return
+			}
+
+			// Check if email is already registered
+			result := db.DB.Where("email = ?", req.Email).First(&existingUser)
+			if result.Error == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "邮箱已被注册"})
+				return
+			} else if result.Error != gorm.ErrRecordNotFound {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
+				return
+			}
+
+			email := req.Email
+			user.Email = &email
+		}
 	}
 
 	// Save the user to database
@@ -223,7 +360,10 @@ func Register(c *gin.Context) {
 		"user": gin.H{
 			"uuid":      user.UUID,
 			"username":  user.Username,
+			"name":      user.Name,
 			"user_type": user.UserType,
+			"email":     user.Email,
+			"phone":     user.PhoneNumber,
 		},
 		"token": token,
 	})
@@ -247,38 +387,92 @@ func Login(c *gin.Context) {
 			return
 		}
 
-		// Find user by phone number
-		result := db.DB.Where("phone_number = ?", req.PhoneNumber).First(&user)
-		if result.Error != nil {
-			if result.Error == gorm.ErrRecordNotFound {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "手机号未注册"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
-			}
-			return
-		}
-
-		// Verify the code
+		// Check verification code
 		var verificationCode models.VerificationCode
-		result = db.DB.Where(
+		result := db.DB.Where(
 			"target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL",
 			req.PhoneNumber, req.VerificationCode, models.VerificationCodeTypeLogin, time.Now(),
 		).First(&verificationCode)
 
 		if result.Error != nil {
 			if result.Error == gorm.ErrRecordNotFound {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "验证码无效或已过期"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "验证码无效或已过期"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "验证码验证失败"})
 			}
 			return
 		}
 
-		// Mark the verification code as used
+		// Mark verification code as used
 		now := time.Now()
 		verificationCode.UsedAt = &now
 		db.DB.Save(&verificationCode)
 
+		// Find user by phone number
+		result = db.DB.Where("phone_number = ?", req.PhoneNumber).First(&user)
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "未找到该手机号注册的用户"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "用户查询失败"})
+			}
+			return
+		}
+	} else if req.Method == "email" {
+		// Email login: can be either with verification code or with password
+		if req.Email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": "邮箱不能为空"})
+			return
+		}
+
+		// Check if using verification code or password
+		if req.VerificationCode != "" {
+			// Login with verification code
+			var verificationCode models.VerificationCode
+			result := db.DB.Where(
+				"target = ? AND code = ? AND type = ? AND expires_at > ? AND used_at IS NULL",
+				req.Email, req.VerificationCode, models.VerificationCodeTypeLogin, time.Now(),
+			).First(&verificationCode)
+
+			if result.Error != nil {
+				if result.Error == gorm.ErrRecordNotFound {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "验证码无效或已过期"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "验证码验证失败"})
+				}
+				return
+			}
+
+			// Mark verification code as used
+			now := time.Now()
+			verificationCode.UsedAt = &now
+			db.DB.Save(&verificationCode)
+
+		} else if req.Password != "" {
+			// Login with password will be handled below after finding the user
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": "需要提供验证码或密码"})
+			return
+		}
+
+		// Find user by email
+		result := db.DB.Where("email = ?", req.Email).First(&user)
+		if result.Error != nil {
+			if result.Error == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "未找到该邮箱注册的用户"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "用户查询失败"})
+			}
+			return
+		}
+
+		// If using password, verify it
+		if req.Password != "" && req.VerificationCode == "" {
+			if user.PasswordHash == nil || *user.PasswordHash != req.Password {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
+				return
+			}
+		}
 	} else if req.Method == "username" {
 		// Username login: validate username and password
 		if req.Username == "" || req.Password == "" {
@@ -290,36 +484,16 @@ func Login(c *gin.Context) {
 		result := db.DB.Where("username = ?", req.Username).First(&user)
 		if result.Error != nil {
 			if result.Error == gorm.ErrRecordNotFound {
-				// 创建一个测试用户（仅用于开发环境）
-				if req.Username == "testuser" && req.Password == "password123" {
-					testUsername := "testuser"
-					testPassword := "password123"
-					user = models.User{
-						UUID:         uuid.New().String(),
-						UserType:     models.UserTypeWorker,
-						Username:     &testUsername,
-						PasswordHash: &testPassword,
-					}
-					db.DB.Create(&user)
-				} else {
-					c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
-					return
-				}
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "未找到该用户名"})
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败"})
-				return
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "用户查询失败"})
 			}
-		}
-
-		// Check password
-		if user.PasswordHash == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 			return
 		}
 
-		// Direct password comparison (no hashing)
-		if *user.PasswordHash != req.Password {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+		// Verify password
+		if user.PasswordHash == nil || *user.PasswordHash != req.Password {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 			return
 		}
 	}
@@ -327,21 +501,23 @@ func Login(c *gin.Context) {
 	// Generate JWT token
 	token, err := middlewares.GenerateToken(&user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败，无法生成令牌"})
 		return
 	}
 
 	// Return success response with user info and token
 	c.JSON(http.StatusOK, gin.H{
 		"message": "登录成功",
-		"data": gin.H{
-			"user": gin.H{
-				"uuid":      user.UUID,
-				"username":  user.Username,
-				"user_type": user.UserType,
-			},
-			"token": token,
+		"user": gin.H{
+			"uuid":         user.UUID,
+			"username":     user.Username,
+			"user_type":    user.UserType,
+			"name":         user.Name,
+			"email":        user.Email,
+			"phone_number": user.PhoneNumber,
+			"avatar_url":   user.AvatarURL,
 		},
+		"token": token,
 	})
 }
 

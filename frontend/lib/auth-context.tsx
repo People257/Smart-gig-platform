@@ -164,13 +164,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       console.log("Register attempt with data:", registerData);
       
-      // Ensure method is either "username" or "phone"
-      if (registerData.method !== "username" && registerData.method !== "phone") {
-        throw new Error("Invalid registration method. Must be 'username' or 'phone'");
+      // Ensure method is valid
+      if (!["username", "phone", "email"].includes(registerData.method)) {
+        throw new Error("Invalid registration method. Must be 'username', 'phone', or 'email'");
       }
       
       const response = await authApi.register(registerData);
       console.log("Register response:", response);
+      
+      if (response.data?.token) {
+        saveAuthToken(response.data.token);
+      }
       
       if (response.data?.user) {
         // 使用normalizeUserData处理用户数据

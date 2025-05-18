@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ArrowLeft, Briefcase } from "lucide-react"
+import { ArrowLeft, Briefcase, Mail, Phone, User } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { authApi } from "@/lib/api"
@@ -25,9 +25,16 @@ export default function RegisterPage() {
   // User type
   const [userType, setUserType] = useState<"worker" | "employer">("worker")
   
+  // Common fields
+  const [name, setName] = useState("")
+  
   // Phone registration fields
   const [phoneNumber, setPhoneNumber] = useState("")
-  const [verificationCode, setVerificationCode] = useState("")
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState("")
+  
+  // Email registration fields
+  const [email, setEmail] = useState("")
+  const [emailVerificationCode, setEmailVerificationCode] = useState("")
   
   // Username registration fields
   const [username, setUsername] = useState("")
@@ -35,14 +42,16 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   
   // Verification code status
-  const [countdown, setCountdown] = useState(0)
+  const [phoneCountdown, setPhoneCountdown] = useState(0)
+  const [emailCountdown, setEmailCountdown] = useState(0)
   
   // Loading states
-  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [isSendingPhoneCode, setIsSendingPhoneCode] = useState(false)
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
 
-  // Send verification code
-  const handleSendCode = async () => {
+  // Send phone verification code
+  const handleSendPhoneCode = async () => {
     if (!phoneNumber || phoneNumber.length < 11) {
       toast({
         variant: "destructive",
@@ -53,19 +62,17 @@ export default function RegisterPage() {
     }
 
     try {
-      setIsSendingCode(true)
-      console.log("Sending verification code to:", phoneNumber)
+      setIsSendingPhoneCode(true)
       
       const response = await authApi.sendVerificationCode({
         phone_number: phoneNumber,
+        target: "phone",
         method: "register",
       })
       
-      console.log("Verification code response:", response)
-      
-      setCountdown(60)
+      setPhoneCountdown(60)
       const timer = setInterval(() => {
-        setCountdown((prev) => {
+        setPhoneCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer)
             return 0
@@ -86,7 +93,54 @@ export default function RegisterPage() {
         description: "Please try again later",
       })
     } finally {
-      setIsSendingCode(false)
+      setIsSendingPhoneCode(false)
+    }
+  }
+
+  // Send email verification code
+  const handleSendEmailCode = async () => {
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      toast({
+        variant: "destructive",
+        title: "Invalid email address",
+        description: "Please enter a valid email address",
+      })
+      return
+    }
+
+    try {
+      setIsSendingEmailCode(true)
+      
+      const response = await authApi.sendVerificationCode({
+        email: email,
+        target: "email",
+        method: "register",
+      })
+      
+      setEmailCountdown(60)
+      const timer = setInterval(() => {
+        setEmailCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      
+      toast({
+        title: "Verification code sent",
+        description: "Please check your email for the verification code",
+      })
+    } catch (error) {
+      console.error("Error sending verification code:", error)
+      toast({
+        variant: "destructive",
+        title: "Failed to send verification code",
+        description: "Please try again later",
+      })
+    } finally {
+      setIsSendingEmailCode(false)
     }
   }
 
@@ -123,12 +177,21 @@ export default function RegisterPage() {
           })
           return
         }
-      } else {
-        if (!phoneNumber || !verificationCode) {
+      } else if (activeTab === "phone") {
+        if (!phoneNumber || !phoneVerificationCode) {
           toast({
             variant: "destructive",
             title: "Missing required fields",
             description: "Please fill in your phone number and verification code",
+          })
+          return
+        }
+      } else if (activeTab === "email") {
+        if (!email || !emailVerificationCode) {
+          toast({
+            variant: "destructive",
+            title: "Missing required fields",
+            description: "Please fill in your email and verification code",
           })
           return
         }
@@ -140,9 +203,24 @@ export default function RegisterPage() {
       const registerData = {
         user_type: userType,
         method: activeTab,
+        name: name || undefined,
         ...(activeTab === "username" 
-          ? { username, password } 
-          : { phone_number: phoneNumber, verification_code: verificationCode })
+          ? { 
+              username, 
+              password,
+              email: email || undefined 
+            } 
+          : activeTab === "email"
+          ? { 
+              email, 
+              verification_code: emailVerificationCode,
+              password: password || undefined,
+              username: username || undefined
+            }
+          : { 
+              phone_number: phoneNumber, 
+              verification_code: phoneVerificationCode 
+            })
       }
       
       console.log("Register data:", registerData)
@@ -197,11 +275,30 @@ export default function RegisterPage() {
               </RadioGroup>
             </div>
             
+            <div className="space-y-2">
+              <Label htmlFor="name">Name (Optional)</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="username">Username</TabsTrigger>
-                <TabsTrigger value="phone">Phone</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsTrigger value="username" className="flex items-center gap-2">
+                  <User className="h-4 w-4" /> Username
+                </TabsTrigger>
+                <TabsTrigger value="email" className="flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> Email
+                </TabsTrigger>
+                <TabsTrigger value="phone" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4" /> Phone
+                </TabsTrigger>
               </TabsList>
+              
               <TabsContent value="username" className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="username">Username</Label>
@@ -211,6 +308,16 @@ export default function RegisterPage() {
                     placeholder="Enter a username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email-optional">Email (Optional)</Label>
+                  <Input
+                    id="email-optional"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -234,6 +341,65 @@ export default function RegisterPage() {
                   />
                 </div>
               </TabsContent>
+              
+              <TabsContent value="email" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email-code">Verification Code</Label>
+                  <div className="flex space-x-2">
+                    <Input
+                      id="email-code"
+                      placeholder="Enter verification code"
+                      value={emailVerificationCode}
+                      onChange={(e) => setEmailVerificationCode(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendEmailCode}
+                      disabled={isSendingEmailCode || emailCountdown > 0 || !email || !email.includes('@')}
+                      className="whitespace-nowrap"
+                    >
+                      {emailCountdown > 0 ? `${emailCountdown}s` : (isSendingEmailCode ? "Sending..." : "Get Code")}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email-password">Password (Optional)</Label>
+                  <Input
+                    id="email-password"
+                    type="password"
+                    placeholder="Create a password (optional)"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Setting a password allows you to log in without verification code next time
+                  </p>
+                </div>
+                {password && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email-username">Username (Optional)</Label>
+                    <Input
+                      id="email-username"
+                      type="text"
+                      placeholder="Create a username (optional)"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                    />
+                  </div>
+                )}
+              </TabsContent>
+              
               <TabsContent value="phone" className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
@@ -246,22 +412,22 @@ export default function RegisterPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="code">Verification Code</Label>
+                  <Label htmlFor="phone-code">Verification Code</Label>
                   <div className="flex space-x-2">
                     <Input
-                      id="code"
+                      id="phone-code"
                       placeholder="Enter verification code"
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value)}
+                      value={phoneVerificationCode}
+                      onChange={(e) => setPhoneVerificationCode(e.target.value)}
                     />
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={handleSendCode}
-                      disabled={isSendingCode || countdown > 0 || phoneNumber.length < 11}
+                      onClick={handleSendPhoneCode}
+                      disabled={isSendingPhoneCode || phoneCountdown > 0 || phoneNumber.length < 11}
                       className="whitespace-nowrap"
                     >
-                      {countdown > 0 ? `${countdown}s` : (isSendingCode ? "Sending..." : "Get Code")}
+                      {phoneCountdown > 0 ? `${phoneCountdown}s` : (isSendingPhoneCode ? "Sending..." : "Get Code")}
                     </Button>
                   </div>
                 </div>
