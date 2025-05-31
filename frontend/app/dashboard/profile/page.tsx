@@ -299,10 +299,7 @@ export default function ProfilePage() {
 
   // 身份认证处理
   const handleVerifyIdentity = () => {
-    toast({
-      title: "功能开发中",
-      description: "实名认证功能即将上线",
-    })
+    toast("功能开发中\n实名认证功能即将上线")
   }
 
   // 新增实名认证提交函数
@@ -594,7 +591,7 @@ export default function ProfilePage() {
             <CardDescription>完成实名认证后可获得更多平台权益</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profileData.is_identity_verified ? (
+            {profileData.id_card ? (
               <div>
                 <div className="mb-2">姓名：<span className="font-semibold">{maskName(profileData.real_name || "已认证")}</span></div>
                 <div className="mb-2">身份证号：<span className="font-semibold">{maskIDCard(profileData.id_card || "已认证")}</span></div>
@@ -605,14 +602,14 @@ export default function ProfilePage() {
                 <div>
                   <Label htmlFor="realname">真实姓名</Label>
                   <Input id="realname" value={realName} onChange={e => setRealName(e.target.value)} placeholder="请输入真实姓名" />
-                  </div>
+                </div>
                 <div>
                   <Label htmlFor="idcard">身份证号</Label>
                   <Input id="idcard" value={idCard} onChange={e => setIdCard(e.target.value)} placeholder="请输入身份证号" maxLength={18} />
                 </div>
                 <Button onClick={handleRealNameAuth} disabled={isVerifying}>
                   {isVerifying ? "认证中..." : "提交认证"}
-                  </Button>
+                </Button>
               </div>
             )}
           </CardContent>
