@@ -373,34 +373,30 @@ func GetPaymentsData(c *gin.Context) {
 	})
 }
 
-// RequestWithdrawal handles a withdrawal request
-func RequestWithdrawal(c *gin.Context) {
-	var req struct {
-		Amount      float64 `json:"amount" binding:"required,gt=0"`
-		AccountUUID string  `json:"account_uuid" binding:"required"`
-	}
+// 新提现请求体
+type SimpleWithdrawalRequest struct {
+	Amount        float64 `json:"amount" binding:"required,gt=0"`
+	AlipayAccount string  `json:"alipay_account" binding:"required"`
+}
 
+// 新提现接口（替换原有实现）
+func RequestWithdrawal(c *gin.Context) {
+	var req SimpleWithdrawalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
 		return
 	}
-
-	// In a real application, we would validate the account belongs to the user
-	// and check if the user has sufficient balance
-
-	// Create withdrawal (in a real app, this would be saved to the database)
+	// 这里可以加余额校验、风控等
 	withdrawalUUID := uuid.New().String()
 	now := time.Now()
-
-	// Return success response
 	c.JSON(http.StatusOK, gin.H{
 		"message": "提现申请已提交",
 		"withdrawal": gin.H{
-			"uuid":         withdrawalUUID,
-			"amount":       req.Amount,
-			"account_uuid": req.AccountUUID,
-			"status":       "pending",
-			"created_at":   now.Format(time.RFC3339),
+			"uuid":           withdrawalUUID,
+			"amount":         req.Amount,
+			"alipay_account": req.AlipayAccount,
+			"status":         "pending",
+			"created_at":     now.Format(time.RFC3339),
 		},
 	})
 }

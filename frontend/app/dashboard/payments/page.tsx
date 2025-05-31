@@ -10,6 +10,9 @@ import { ArrowDownUp, ArrowUpRight, Calendar, CreditCard, Download, Search, Wall
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { paymentsApi } from "@/lib/api" 
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from "@/components/ui/dialog"
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form"
+import { useForm } from "react-hook-form"
 
 interface Transaction {
   id: string;
@@ -37,6 +40,10 @@ export default function PaymentsPage() {
     totalIncome: 0,
     totalExpense: 0,
     transactions: []
+  })
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
+  const withdrawForm = useForm<{ alipay_account: string; amount: number }>({
+    defaultValues: { alipay_account: "", amount: 0 },
   })
 
   useEffect(() => {
@@ -93,39 +100,36 @@ export default function PaymentsPage() {
     fetchPaymentData()
   }, [])
 
-  const handleWithdraw = async () => {
-    try {
-      // 检查是否有足够的余额
-      if (paymentData.balance <= 0) {
-        toast.error("您的余额不足，无法提现")
-        return
-      }
-      
-      // 检查是否有提现账户
-      if (!paymentData.withdrawalAccounts || paymentData.withdrawalAccounts.length === 0) {
-        toast.error("请先添加提现账户")
-        return
-      }
-      
-      // 这里可以添加提现流程，例如打开提现表单
-      toast("功能开发中", {
-        description: "提现功能即将上线"
-      })
-    } catch (error) {
-      console.error('提现操作失败:', error)
-      toast.error("操作失败，请稍后重试")
+  const handleWithdraw = () => {
+    if (paymentData.balance <= 0) {
+      toast.error("您的余额不足，无法提现")
+      return
     }
+    setWithdrawOpen(true)
   }
 
-  const handleAddAccount = async () => {
-    try {
-      // 这里可以添加添加账户流程，例如打开账户表单
-      toast("功能开发中", {
-        description: "添加提现账户功能即将上线"
-      })
-    } catch (error) {
-      console.error('添加账户操作失败:', error)
-      toast.error("操作失败，请稍后重试")
+  const onWithdrawSubmit = async (values: { alipay_account: string; amount: number }) => {
+    if (values.amount > paymentData.balance) {
+      toast.error("提现金额不能大于余额")
+      return
+    }
+    const res = await paymentsApi.requestWithdrawal(values)
+    if (res.success) {
+      toast.success("提现申请已提交")
+      setWithdrawOpen(false)
+      withdrawForm.reset()
+      // 刷新数据
+      const response = await paymentsApi.getPaymentsData()
+      if (response.success && response.data) {
+        setPaymentData({
+          balance: response.data.balance || 0,
+          totalIncome: response.data.totalIncome || 0,
+          totalExpense: response.data.totalExpense || 0,
+          transactions: response.data.transactions || []
+        })
+      }
+    } else {
+      toast.error(res.error || "提现失败")
     }
   }
 
@@ -189,11 +193,57 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">支付结算</h1>
-        <Button onClick={handleWithdraw}>
-          <Wallet className="mr-2 h-4 w-4" />
-          <span className="hidden sm:inline">申请提现</span>
-          <span className="sm:hidden">提现</span>
-        </Button>
+        <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={handleWithdraw}>
+              <Wallet className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">申请提现</span>
+              <span className="sm:hidden">提现</span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>申请提现</DialogTitle>
+              <DialogDescription>请输入支付宝账号和提现金额</DialogDescription>
+            </DialogHeader>
+            <Form {...withdrawForm}>
+              <form onSubmit={withdrawForm.handleSubmit(onWithdrawSubmit)} className="space-y-4">
+                <FormField
+                  control={withdrawForm.control}
+                  name="alipay_account"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>支付宝账号</FormLabel>
+                      <FormControl>
+                        <Input placeholder="请输入支付宝账号" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={withdrawForm.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>提现金额</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={1} max={paymentData.balance} step="0.01" placeholder="请输入提现金额" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="submit">提交申请</Button>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">取消</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -312,59 +362,6 @@ export default function PaymentsPage() {
               {renderTransactionsTable(filterTransactions("expense"))}
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>提现账户</CardTitle>
-          <CardDescription>管理您的提现账户信息</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : paymentData.withdrawalAccounts && paymentData.withdrawalAccounts.length > 0 ? (
-            <div className="space-y-4">
-              {/* 显示提现账户列表 */}
-              {paymentData.withdrawalAccounts.map((account, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">{account.bank_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {account.account_number.replace(/(?<=^\d{4})\d+(?=\d{4}$)/, '****')}
-                        </p>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm">设为默认</Button>
-                  </div>
-                </div>
-              ))}
-              <Button variant="outline" className="w-full" onClick={handleAddAccount}>
-                <Plus className="mr-2 h-4 w-4" />
-                添加提现账户
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex flex-col items-center justify-center p-8 border rounded-lg text-center">
-                <div className="rounded-full bg-muted p-3 mb-4">
-                  <CreditCard className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-medium">暂无提现账户</h3>
-                <p className="text-sm text-muted-foreground mt-1 mb-4">添加提现账户以便申请提现</p>
-              </div>
-              <Button variant="outline" className="w-full" onClick={handleAddAccount}>
-                <Plus className="mr-2 h-4 w-4" />
-                添加提现账户
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

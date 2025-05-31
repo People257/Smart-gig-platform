@@ -423,6 +423,17 @@ export const userApi = {
       method: "DELETE",
     });
   },
+  
+  realNameAuth: async (data: { real_name: string; id_card: string }) => {
+    console.log("Calling realNameAuth API", data);
+    return fetchApi<{ real_name: string; id_card: string; is_identity_verified: boolean }>(
+      "/users/realname-auth",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
 };
 
 // Tasks API
@@ -470,7 +481,7 @@ export const paymentsApi = {
     return fetchApi<any>("/payments");
   },
   
-  requestWithdrawal: async (withdrawalData: any) => {
+  requestWithdrawal: async (withdrawalData: { amount: number; alipay_account: string }) => {
     console.log("Calling requestWithdrawal API:", withdrawalData);
     return fetchApi<{ withdrawal: any }>("/payments/withdraw", {
       method: "POST",

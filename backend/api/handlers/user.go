@@ -400,3 +400,67 @@ func DeleteAccount(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "账户已成功删除"})
 }
+
+// 实名认证请求体
+type RealNameAuthRequest struct {
+	RealName string `json:"real_name" binding:"required"`
+	IDCard   string `json:"id_card" binding:"required"`
+}
+
+// 实名认证接口
+func RealNameAuth(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	var req RealNameAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误", "details": err.Error()})
+		return
+	}
+	// 简单校验身份证号格式（可扩展更严格校验）
+	if len(req.IDCard) != 18 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号格式不正确"})
+		return
+	}
+	var user models.User
+	if err := db.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	user.RealName = &req.RealName
+	user.IDCard = &req.IDCard
+	user.IdentityVerifiedStatus = models.IdentityStatusVerified
+	if err := db.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "认证失败", "details": err.Error()})
+		return
+	}
+	// 返回脱敏信息
+	c.JSON(http.StatusOK, gin.H{
+		"message":              "实名认证成功",
+		"real_name":            maskName(req.RealName),
+		"id_card":              maskIDCard(req.IDCard),
+		"is_identity_verified": true,
+	})
+}
+
+// 姓名脱敏：只显示第一个字和最后一个字
+func maskName(name string) string {
+	if len([]rune(name)) <= 1 {
+		return "*"
+	}
+	runes := []rune(name)
+	if len(runes) == 2 {
+		return string(runes[0]) + "*"
+	}
+	return string(runes[0]) + strings.Repeat("*", len(runes)-2) + string(runes[len(runes)-1])
+}
+
+// 身份证脱敏：前3后4位明文
+func maskIDCard(id string) string {
+	if len(id) < 7 {
+		return "****"
+	}
+	return id[:3] + strings.Repeat("*", len(id)-7) + id[len(id)-4:]
+}

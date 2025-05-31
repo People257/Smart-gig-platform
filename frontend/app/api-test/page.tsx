@@ -4,13 +4,11 @@ import { useState, useEffect } from "react";
 import { authApi, userApi, saveAuthToken, getAuthToken } from "../../lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { DebugJwt } from "@/components/debug-jwt";
 
 export default function ApiTestPage() {
   const [status, setStatus] = useState<string>("Checking API connection...");
   const [error, setError] = useState<string | null>(null);
   const [loginResult, setLoginResult] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   
   useEffect(() => {
     const testApi = async () => {
@@ -34,12 +32,6 @@ export default function ApiTestPage() {
     };
 
     testApi();
-    
-    // Check if we have a token in localStorage
-    const savedToken = getAuthToken();
-    if (savedToken) {
-      setToken(savedToken);
-    }
   }, []);
 
   const testLogin = async () => {
@@ -55,10 +47,6 @@ export default function ApiTestPage() {
       
       console.log("Login API response:", loginResponse);
       setLoginResult(JSON.stringify(loginResponse, null, 2));
-      
-      // Update token state if login was successful
-      const newToken = getAuthToken();
-      setToken(newToken);
       
       if (loginResponse.success && loginResponse.data?.user) {
         toast.success("Login successful!");
@@ -93,51 +81,6 @@ export default function ApiTestPage() {
       toast.error("Profile test error: " + err.message);
     }
   };
-  
-  const testTokenValidity = async () => {
-    try {
-      setLoginResult("Testing if token is valid...");
-      
-      // Send a request to dashboard API which requires authentication
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/dashboard`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      
-      const data = await response.json();
-      console.log("Token test response:", data);
-      
-      setLoginResult(JSON.stringify({
-        status: response.status,
-        ok: response.ok,
-        data
-      }, null, 2));
-      
-      if (response.ok) {
-        toast.success("Token is valid!");
-      } else {
-        toast.error("Token validation failed: " + (data.error || response.statusText));
-      }
-    } catch (err: any) {
-      console.error("Token validation error:", err);
-      setLoginResult(`Error: ${err.message || JSON.stringify(err)}`);
-      toast.error("Token validation error: " + err.message);
-    }
-  };
-  
-  const clearToken = () => {
-    try {
-      localStorage.removeItem('auth_token');
-      setToken(null);
-      toast.success("Token cleared from localStorage");
-    } catch (err) {
-      console.error("Failed to clear token:", err);
-      toast.error("Failed to clear token");
-    }
-  };
 
   return (
     <div className="container mx-auto p-4">
@@ -155,15 +98,11 @@ export default function ApiTestPage() {
         <p><strong>Default Fallback:</strong> http://localhost:8080/api</p>
       </div>
 
-      {/* JWT调试组件 */}
-      <DebugJwt />
-      
       <div className="mb-4 p-4 border rounded">
         <h2 className="text-xl font-bold">Test API Methods</h2>
         <div className="flex gap-2 mb-4">
           <Button onClick={testLogin} className="mb-2">Test Login API</Button>
           <Button onClick={testUserProfile} className="mb-2">Test User Profile</Button>
-          <Button onClick={clearToken} variant="destructive" className="mb-2">Clear Token</Button>
         </div>
         {loginResult && (
           <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { TopBar } from "@/components/dashboard/topbar"
-import { DebugJwt } from "@/components/debug-jwt"
 import { toast } from "sonner"
 
 interface DashboardLayoutProps {
@@ -77,9 +76,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <TopBar />
         
         <main className="flex-1 p-6">
-          {/* 开发环境下显示JWT调试信息 */}
-          {process.env.NODE_ENV === 'development' && <DebugJwt />}
-          
           <ErrorBoundary>
             {children}
           </ErrorBoundary>

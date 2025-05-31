@@ -62,6 +62,12 @@ export default function ProfilePage() {
   const [skillInput, setSkillInput] = useState("")
   const [skills, setSkills] = useState<string[]>([])
 
+  // 新增实名认证表单相关状态
+  const [realName, setRealName] = useState("");
+  const [idCard, setIdCard] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [identityInfo, setIdentityInfo] = useState<{real_name?: string, id_card?: string, is_identity_verified?: boolean} | null>(null);
+
   // 获取用户资料
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -287,6 +293,30 @@ export default function ProfilePage() {
       description: "实名认证功能即将上线",
     })
   }
+
+  // 新增实名认证提交函数
+  const handleRealNameAuth = async () => {
+    if (!realName || !idCard) {
+      toast.error("请填写姓名和身份证号");
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      const response = await userApi.realNameAuth({ real_name: realName, id_card: idCard });
+      if (response.success) {
+        toast.success("实名认证成功");
+        setIdentityInfo(response.data);
+        // 触发资料刷新
+        setRetryCount(prev => prev + 1);
+      } else {
+        toast.error(response.error || "实名认证失败");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "实名认证失败");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   // 如果出现错误，显示错误提示
   if (error && !isLoading) {
@@ -550,43 +580,29 @@ export default function ProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle>实名认证</CardTitle>
-            <CardDescription>完成实名认证以获得更多任务机会</CardDescription>
+            <CardDescription>完成实名认证后可获得更多平台权益</CardDescription>
           </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                  <Skeleton className="h-6 w-16" />
-                </div>
-                <Skeleton className="h-10 w-32" />
+          <CardContent className="space-y-4">
+            {profileData.is_identity_verified || identityInfo?.is_identity_verified ? (
+              <div>
+                <div className="mb-2">姓名：<span className="font-semibold">{identityInfo?.real_name || profileData.real_name || "已认证"}</span></div>
+                <div className="mb-2">身份证号：<span className="font-semibold">{identityInfo?.id_card || profileData.id_card || "已认证"}</span></div>
+                <Badge className="bg-green-500">已认证</Badge>
               </div>
             ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="font-medium">身份认证</p>
-                    <p className="text-sm text-muted-foreground">上传您的身份证正反面照片进行认证</p>
-                  </div>
-                  <Badge 
-                    variant="outline" 
-                    className={profileData.verified || profileData.is_identity_verified ? 
-                      "bg-green-100 text-green-800 hover:bg-green-100" : 
-                      "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"}
-                  >
-                    {profileData.verified || profileData.is_identity_verified ? "已认证" : "待认证"}
-                  </Badge>
+              <div className="flex flex-col gap-4 max-w-md">
+                <div>
+                  <Label htmlFor="realname">真实姓名</Label>
+                  <Input id="realname" value={realName} onChange={e => setRealName(e.target.value)} placeholder="请输入真实姓名" />
                 </div>
-                {!(profileData.verified || profileData.is_identity_verified) && (
-                  <Button className="mt-4" onClick={handleVerifyIdentity}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    上传证件
-                  </Button>
-                )}
-              </>
+                <div>
+                  <Label htmlFor="idcard">身份证号</Label>
+                  <Input id="idcard" value={idCard} onChange={e => setIdCard(e.target.value)} placeholder="请输入身份证号" maxLength={18} />
+                </div>
+                <Button onClick={handleRealNameAuth} disabled={isVerifying}>
+                  {isVerifying ? "认证中..." : "提交认证"}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

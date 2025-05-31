@@ -49,6 +49,8 @@ type User struct {
 	CreatedAt                time.Time                  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                time.Time                  `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt                gorm.DeletedAt             `gorm:"index" json:"-"`
+	RealName                 *string                    `gorm:"type:varchar(50)" json:"real_name,omitempty"`
+	IDCard                   *string                    `gorm:"type:varchar(18)" json:"id_card,omitempty"`
 
 	// Relations
 	Skills        []Skill           `gorm:"many2many:user_skills;" json:"skills,omitempty"`
@@ -70,12 +72,4 @@ type UserFavorite struct {
 	UserID    uint      `gorm:"primaryKey" json:"user_id"`
 	TaskID    uint      `gorm:"primaryKey" json:"task_id"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-}
-
-// BeforeCreate is a GORM hook that runs before creating a user record
-func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
-	if u.IdentityVerifiedStatus == "" {
-		u.IdentityVerifiedStatus = IdentityStatusNotVerified
-	}
-	return nil
 }
