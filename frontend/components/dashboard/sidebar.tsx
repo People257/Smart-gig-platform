@@ -43,6 +43,12 @@ export function Sidebar() {
       icon: <UserIcon className="h-5 w-5" />,
     },
     {
+      href: "/dashboard/tasks/create",
+      label: "创建任务",
+      icon: <FileTextIcon className="h-5 w-5" />,
+      restrictTo: ["employer"],
+    },
+    {
       href: "/dashboard/tasks",
       label: "任务管理",
       icon: <FileTextIcon className="h-5 w-5" />,

@@ -43,6 +43,7 @@ func SetupRoutes(r *gin.Engine) {
 		users.PUT("/settings", middlewares.AuthRequired(), handlers.UpdateUserSettings)
 		users.POST("/change-password", middlewares.AuthRequired(), handlers.ChangePassword)
 		users.DELETE("/account", middlewares.AuthRequired(), handlers.DeleteAccount)
+		users.POST("/realname-auth", middlewares.AuthRequired(), handlers.RealNameAuth)
 	}
 
 	// Task routes

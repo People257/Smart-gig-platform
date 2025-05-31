@@ -9,6 +9,7 @@ import { BarChart, Clock, DollarSign, FileText, Plus, Star } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { dashboardApi } from "@/lib/api"
 import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
 
 // 定义仪表盘数据类型
 interface DashboardData {
@@ -32,6 +33,7 @@ interface DashboardData {
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -59,13 +61,15 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">控制台</h1>
-        <Link href="/dashboard/tasks/create">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">发布任务</span>
-            <span className="sm:hidden">发布</span>
-          </Button>
-        </Link>
+        {user?.user_type === "employer" && (
+          <Link href="/dashboard/tasks/create">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">发布任务</span>
+              <span className="sm:hidden">发布</span>
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

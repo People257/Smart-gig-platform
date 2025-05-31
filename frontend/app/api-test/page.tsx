@@ -97,7 +97,7 @@ export default function ApiTestPage() {
         <p><strong>NEXT_PUBLIC_API_URL:</strong> {process.env.NEXT_PUBLIC_API_URL || "Not set"}</p>
         <p><strong>Default Fallback:</strong> http://localhost:8080/api</p>
       </div>
-
+      
       <div className="mb-4 p-4 border rounded">
         <h2 className="text-xl font-bold">Test API Methods</h2>
         <div className="flex gap-2 mb-4">

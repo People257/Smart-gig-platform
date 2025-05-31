@@ -10,6 +10,8 @@ import (
 	"zhlg/backend/db"
 	"zhlg/backend/models"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -26,137 +28,77 @@ type UpdateUserProfileRequest struct {
 
 // GetUserProfile handles retrieving the current user's profile
 func GetUserProfile(c *gin.Context) {
-	// In a real application, we would retrieve the user from the database
-	// userID := c.GetUint("userID")
-	// var user models.User
-	// db.Preload("Skills").First(&user, userID)
-
-	// Create mock user for demo
-	user := models.User{
-		ID:       1,
-		UUID:     "user-uuid-123",
-		UserType: models.UserTypeWorker,
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
 	}
-	username := "testuser"
-	phone := "13800138000"
-	avatar := "https://example.com/avatar.jpg"
-	bio := "I am a skilled worker with experience in multiple areas."
-	location := "广州市"
-	hourlyRate := 120.50
-	user.Username = &username
-	user.PhoneNumber = &phone
-	user.AvatarURL = &avatar
-	user.Bio = &bio
-	user.Location = &location
-	user.HourlyRate = &hourlyRate
-
-	// For demo, create mock skills
-	skills := []models.Skill{
-		{ID: 1, Name: "UI设计"},
-		{ID: 2, Name: "Web开发"},
+	var user models.User
+	if err := db.DB.Preload("Skills").First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
 	}
-
-	// Return user profile
-	c.JSON(http.StatusOK, gin.H{
-		"uuid":                 user.UUID,
-		"name":                 user.Name,
-		"email":                user.Email,
-		"phone_number":         user.PhoneNumber,
-		"user_type":            user.UserType,
-		"avatar_url":           user.AvatarURL,
-		"bio":                  user.Bio,
-		"location":             user.Location,
-		"hourly_rate":          user.HourlyRate,
-		"skills":               skills,
-		"is_identity_verified": user.IdentityVerifiedStatus == models.IdentityStatusVerified,
-		"created_at":           user.CreatedAt,
-	})
+	c.JSON(http.StatusOK, user)
 }
 
 // UpdateUserProfile handles updating the current user's profile
 func UpdateUserProfile(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
 	var req UpdateUserProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
 		return
 	}
-
-	// In a real application, we would retrieve the user from the database and update it
-	// userID := c.GetUint("userID")
-	// var user models.User
-	// db.First(&user, userID)
-
-	// Create mock user for demo
-	user := models.User{
-		ID:       1,
-		UUID:     "user-uuid-123",
-		UserType: models.UserTypeWorker,
+	var user models.User
+	if err := db.DB.Preload("Skills").First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
 	}
-
-	// Update fields if provided
 	if req.Name != nil {
 		user.Name = req.Name
 	}
-
 	if req.Bio != nil {
 		user.Bio = req.Bio
 	}
-
 	if req.Location != nil {
 		user.Location = req.Location
 	}
-
 	if req.HourlyRate != nil && user.UserType == models.UserTypeWorker {
 		user.HourlyRate = req.HourlyRate
 	}
-
 	if req.Skills != nil && user.UserType == models.UserTypeWorker {
-		// In a real application, we would update skills in the database
-		// db.Model(&user).Association("Skills").Clear()
-		// for _, skillName := range *req.Skills {
-		//   var skill models.Skill
-		//   db.Where("name = ?", skillName).FirstOrCreate(&skill, models.Skill{Name: skillName})
-		//   db.Model(&user).Association("Skills").Append(&skill)
-		// }
-	}
-
-	// Save the updated user
-	// db.Save(&user)
-
-	// For demo, create mock skills
-	skills := []models.Skill{
-		{ID: 1, Name: "UI设计"},
-		{ID: 2, Name: "Web开发"},
-	}
-
-	// If skills were updated, replace with new skills
-	if req.Skills != nil {
-		skills = make([]models.Skill, 0)
-		for i, skillName := range *req.Skills {
-			skills = append(skills, models.Skill{
-				ID:   uint(i + 1),
-				Name: skillName,
-			})
+		db.DB.Model(&user).Association("Skills").Clear()
+		for _, skillName := range *req.Skills {
+			var skill models.Skill
+			db.DB.Where("name = ?", skillName).FirstOrCreate(&skill, models.Skill{Name: skillName})
+			db.DB.Model(&user).Association("Skills").Append(&skill)
 		}
 	}
-
-	// Return success response with updated user
+	if err := db.DB.Save(&user).Error; err != nil {
+		log.Printf("[UpdateUserProfile] userID=%v, 更新字段: name=%v, bio=%v, location=%v, hourlyRate=%v, skills=%v", userID, req.Name, req.Bio, req.Location, req.HourlyRate, req.Skills)
+		if req.Skills != nil && user.UserType == models.UserTypeWorker {
+			log.Printf("[UpdateUserProfile] db.Model(&user).Association('Skills').Clear userID=%v", userID)
+			for _, skillName := range *req.Skills {
+				log.Printf("[UpdateUserProfile] db.Model(&user).Association('Skills').Append userID=%v, skill=%v", userID, skillName)
+			}
+		}
+		log.Printf("[UpdateUserProfile] db.Save userID=%v", userID)
+		log.Printf("[UpdateUserProfile] db.Save userID=%v, err=%v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存用户信息失败"})
+		return
+	}
+	// 重新查一次，带技能
+	if err := db.DB.Preload("Skills").First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "资料更新成功",
-		"user": gin.H{
-			"uuid":                 user.UUID,
-			"name":                 user.Name,
-			"email":                user.Email,
-			"phone_number":         user.PhoneNumber,
-			"user_type":            user.UserType,
-			"avatar_url":           user.AvatarURL,
-			"bio":                  user.Bio,
-			"location":             user.Location,
-			"hourly_rate":          user.HourlyRate,
-			"skills":               skills,
-			"is_identity_verified": user.IdentityVerifiedStatus == models.IdentityStatusVerified,
-			"created_at":           user.CreatedAt,
-		},
+		"user":    user,
 	})
 }
 
@@ -207,10 +149,12 @@ func UploadAvatar(c *gin.Context) {
 	// db.Save(&user)
 
 	// Return success response with the avatar URL
+	userID, _ := c.Get("userID")
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "头像上传成功",
 		"avatar_url": "/uploads/avatars/" + filename,
 	})
+	log.Printf("[UploadAvatar] db.Save userID=%v, avatar=%v", userID, "/uploads/avatars/"+filename)
 }
 
 // UpdateUserSettings updates a user's settings
@@ -320,6 +264,7 @@ func UpdateUserSettings(c *gin.Context) {
 			"avatar_url": authUser.AvatarURL,
 		},
 	})
+	log.Printf("[UpdateUserSettings] db.Save userID=%v", authUser.ID)
 }
 
 // ChangePassword handles changing a user's password
@@ -367,6 +312,7 @@ func ChangePassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码已成功更新"})
+	log.Printf("[ChangePassword] db.Save userID=%v", authUser.ID)
 }
 
 // DeleteAccount handles account deletion
@@ -399,6 +345,7 @@ func DeleteAccount(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "账户已成功删除"})
+	log.Printf("[DeleteAccount] db.Delete userID=%v", authUser.ID)
 }
 
 // 实名认证请求体
@@ -443,6 +390,7 @@ func RealNameAuth(c *gin.Context) {
 		"id_card":              maskIDCard(req.IDCard),
 		"is_identity_verified": true,
 	})
+	log.Printf("[RealNameAuth] db.Save userID=%v", userID)
 }
 
 // 姓名脱敏：只显示第一个字和最后一个字

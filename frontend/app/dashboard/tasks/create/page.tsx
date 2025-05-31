@@ -15,9 +15,19 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Calendar, MapPin, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { tasksApi } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 
 export default function CreateTaskPage() {
-  const router = useRouter()
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  // 权限判断：仅雇主可访问
+  if (!isLoading && user?.user_type !== "employer") {
+    if (typeof window !== "undefined") {
+      router.replace("/dashboard");
+    }
+    return <div className="text-center py-20 text-xl text-red-500">无权限访问</div>;
+  }
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -33,7 +43,7 @@ export default function CreateTaskPage() {
   const [isPublic, setIsPublic] = useState(true)
   const [isUrgent, setIsUrgent] = useState(false)
   const [agreed, setAgreed] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleAddSkill = () => {
     if (skillInput.trim() && !skills.includes(skillInput.trim())) {
@@ -55,7 +65,7 @@ export default function CreateTaskPage() {
     }
 
     try {
-      setIsLoading(true)
+      setIsSubmitting(true)
       
       const taskData = {
         title,
@@ -84,7 +94,7 @@ export default function CreateTaskPage() {
       console.error("任务发布失败:", error)
       toast.error(error.message || "发布失败，请稍后重试")
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -355,11 +365,11 @@ export default function CreateTaskPage() {
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="outline" type="button" onClick={() => router.back()} disabled={isLoading}>
+              <Button variant="outline" type="button" onClick={() => router.back()} disabled={isSubmitting}>
                 取消
               </Button>
-              <Button type="submit" disabled={isLoading || !agreed}>
-                {isLoading ? "发布中..." : "发布任务"}
+              <Button type="submit" disabled={isSubmitting || !agreed}>
+                {isSubmitting ? "发布中..." : "发布任务"}
               </Button>
             </CardFooter>
           </Card>

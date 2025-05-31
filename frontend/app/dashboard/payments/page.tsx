@@ -101,18 +101,18 @@ export default function PaymentsPage() {
   }, [])
 
   const handleWithdraw = () => {
-    if (paymentData.balance <= 0) {
-      toast.error("您的余额不足，无法提现")
-      return
-    }
+      if (paymentData.balance <= 0) {
+        toast.error("您的余额不足，无法提现")
+        return
+      }
     setWithdrawOpen(true)
   }
 
   const onWithdrawSubmit = async (values: { alipay_account: string; amount: number }) => {
     if (values.amount > paymentData.balance) {
       toast.error("提现金额不能大于余额")
-      return
-    }
+        return
+      }
     const res = await paymentsApi.requestWithdrawal(values)
     if (res.success) {
       toast.success("提现申请已提交")
@@ -195,11 +195,11 @@ export default function PaymentsPage() {
         <h1 className="text-2xl font-bold tracking-tight">支付结算</h1>
         <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
           <DialogTrigger asChild>
-            <Button onClick={handleWithdraw}>
-              <Wallet className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">申请提现</span>
-              <span className="sm:hidden">提现</span>
-            </Button>
+        <Button onClick={handleWithdraw}>
+          <Wallet className="mr-2 h-4 w-4" />
+          <span className="hidden sm:inline">申请提现</span>
+          <span className="sm:hidden">提现</span>
+        </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>

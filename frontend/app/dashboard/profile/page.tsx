@@ -99,7 +99,7 @@ export default function ProfilePage() {
             const normalizedData: ProfileData = {
               ...userData,
               // 处理头像字段
-              avatar: userData.avatar_url || userData.avatar,
+              avatar: (userData.avatarUrl ?? profileData.avatar) as string,
               // 确保verified字段一致
               verified: userData.is_identity_verified || userData.verified || false,
               // 确保有名称字段
@@ -197,16 +197,13 @@ export default function ProfilePage() {
       setIsSaving(true)
       console.log("准备保存用户资料...")
       
-      // 根据后端接收的格式准备技能数据
-      // 如果后端期望的是对象数组格式 [{name: "技能名"}]
-      const formattedSkills = skills.map(skill => ({ name: skill }))
-      
+      // skills 直接传字符串数组，后端只接受 string[]
       const updatedProfile = {
         name,
         bio,
         location,
         hourly_rate: hourlyRate ? parseFloat(hourlyRate) : undefined,
-        skills: formattedSkills
+        skills
       }
       
       console.log("提交的个人资料数据:", updatedProfile)
@@ -220,9 +217,7 @@ export default function ProfilePage() {
         setProfileData({
           ...profileData,
           ...userData,
-          // 确保头像字段一致
-          avatar: userData.avatar_url || userData.avatar || profileData.avatar,
-          // 技能已格式化，无需重新处理
+          ...(userData.avatarUrl ? { avatar: userData.avatarUrl } : {}),
         })
         
         // 更新全局用户状态
@@ -303,7 +298,7 @@ export default function ProfilePage() {
     setIsVerifying(true);
     try {
       const response = await userApi.realNameAuth({ real_name: realName, id_card: idCard });
-      if (response.success) {
+      if (response.success && response.data) {
         toast.success("实名认证成功");
         setIdentityInfo(response.data);
         // 触发资料刷新
@@ -594,14 +589,14 @@ export default function ProfilePage() {
                 <div>
                   <Label htmlFor="realname">真实姓名</Label>
                   <Input id="realname" value={realName} onChange={e => setRealName(e.target.value)} placeholder="请输入真实姓名" />
-                </div>
+                  </div>
                 <div>
                   <Label htmlFor="idcard">身份证号</Label>
                   <Input id="idcard" value={idCard} onChange={e => setIdCard(e.target.value)} placeholder="请输入身份证号" maxLength={18} />
                 </div>
                 <Button onClick={handleRealNameAuth} disabled={isVerifying}>
                   {isVerifying ? "认证中..." : "提交认证"}
-                </Button>
+                  </Button>
               </div>
             )}
           </CardContent>
