@@ -383,14 +383,15 @@ func RealNameAuth(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "认证失败", "details": err.Error()})
 		return
 	}
-	// 返回脱敏信息
+	// 返回实名信息（脱敏）
 	c.JSON(http.StatusOK, gin.H{
-		"message":              "实名认证成功",
-		"real_name":            maskName(req.RealName),
-		"id_card":              maskIDCard(req.IDCard),
-		"is_identity_verified": true,
+		"message":                  "实名认证成功",
+		"real_name":                maskName(req.RealName),
+		"id_card":                  maskIDCard(req.IDCard),
+		"is_identity_verified":     true,
+		"identity_verified_status": user.IdentityVerifiedStatus,
 	})
-	log.Printf("[RealNameAuth] db.Save userID=%v", userID)
+	log.Printf("[RealNameAuth] db.Save userID=%v, real_name=%v, id_card=%v", userID, user.RealName, user.IDCard)
 }
 
 // 姓名脱敏：只显示第一个字和最后一个字

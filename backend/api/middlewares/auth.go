@@ -90,23 +90,27 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// Get token from header
+		// Get token from header or cookie
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		var tokenString string
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+		if tokenString == "" {
+			// 尝试从 cookie 取
+			cookieToken, err := c.Cookie("auth_token")
+			if err == nil && cookieToken != "" {
+				tokenString = cookieToken
+			}
+		}
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header or auth_token cookie is required"})
 			c.Abort()
 			return
 		}
-
-		// Extract the token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 
 		// Validate token
 		claims, err := validateToken(tokenString)
@@ -133,7 +137,7 @@ func AuthRequired() gin.HandlerFunc {
 
 		// Set user in context
 		c.Set("user", &user)
-		c.Set("user_id", claims.UserID)
+		c.Set("userID", claims.UserID)
 		c.Set("user_uuid", claims.UUID)
 		c.Set("user_type", claims.UserType)
 
