@@ -42,6 +42,20 @@ interface ProfileData {
   [key: string]: any;
 }
 
+// 工具函数：姓名脱敏（只显示第一个字和最后一个字）
+function maskName(name: string) {
+  if (!name) return '';
+  if (name.length <= 1) return '*';
+  if (name.length === 2) return name[0] + '*';
+  return name[0] + '*'.repeat(name.length - 2) + name[name.length - 1];
+}
+
+// 工具函数：身份证脱敏（前3后4位明文）
+function maskIDCard(id: string) {
+  if (!id || id.length < 7) return '****';
+  return id.slice(0, 3) + '*'.repeat(id.length - 7) + id.slice(-4);
+}
+
 export default function ProfilePage() {
   // 使用认证上下文
   const { user: authUser, updateUser } = useAuth()
@@ -99,7 +113,7 @@ export default function ProfilePage() {
             const normalizedData: ProfileData = {
               ...userData,
               // 处理头像字段
-              avatar: (userData.avatarUrl ?? profileData.avatar) as string,
+              avatar: (userData.avatarUrl ?? userData.avatar ?? profileData.avatar) as string,
               // 确保verified字段一致
               verified: userData.is_identity_verified || userData.verified || false,
               // 确保有名称字段
@@ -580,8 +594,8 @@ export default function ProfilePage() {
           <CardContent className="space-y-4">
             {profileData.is_identity_verified || identityInfo?.is_identity_verified ? (
               <div>
-                <div className="mb-2">姓名：<span className="font-semibold">{identityInfo?.real_name || profileData.real_name || "已认证"}</span></div>
-                <div className="mb-2">身份证号：<span className="font-semibold">{identityInfo?.id_card || profileData.id_card || "已认证"}</span></div>
+                <div className="mb-2">姓名：<span className="font-semibold">{maskName(identityInfo?.real_name || profileData.real_name || "已认证")}</span></div>
+                <div className="mb-2">身份证号：<span className="font-semibold">{maskIDCard(identityInfo?.id_card || profileData.id_card || "已认证")}</span></div>
                 <Badge className="bg-green-500">已认证</Badge>
               </div>
             ) : (
