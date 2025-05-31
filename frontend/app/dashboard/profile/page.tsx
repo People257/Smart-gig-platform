@@ -39,6 +39,8 @@ interface ProfileData {
   email?: string;
   created_at?: string;
   user_type?: string;
+  real_name?: string;
+  id_card?: string;
   [key: string]: any;
 }
 
@@ -592,10 +594,10 @@ export default function ProfilePage() {
             <CardDescription>完成实名认证后可获得更多平台权益</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profileData.is_identity_verified || identityInfo?.is_identity_verified ? (
+            {profileData.is_identity_verified ? (
               <div>
-                <div className="mb-2">姓名：<span className="font-semibold">{maskName(identityInfo?.real_name || profileData.real_name || "已认证")}</span></div>
-                <div className="mb-2">身份证号：<span className="font-semibold">{maskIDCard(identityInfo?.id_card || profileData.id_card || "已认证")}</span></div>
+                <div className="mb-2">姓名：<span className="font-semibold">{maskName(profileData.real_name || "已认证")}</span></div>
+                <div className="mb-2">身份证号：<span className="font-semibold">{maskIDCard(profileData.id_card || "已认证")}</span></div>
                 <Badge className="bg-green-500">已认证</Badge>
               </div>
             ) : (
