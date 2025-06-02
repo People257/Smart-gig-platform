@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { userApi } from "@/lib/api"
+import RealNameAuthForm from '../../../components/RealNameAuthForm'
 
 // 技能对象类型定义
 interface Skill {
@@ -158,6 +159,17 @@ export default function ProfilePage() {
             } else {
               setSkills([])
             }
+
+            // 在useEffect中添加获取实名认证信息的逻辑
+            const verificationResponse = await userApi.getRealNameVerification();
+            if (verificationResponse.success && verificationResponse.data) {
+              console.log("获取到实名认证信息:", verificationResponse.data);
+              setIdentityInfo(verificationResponse.data as {
+                real_name?: string,
+                id_card?: string,
+                is_identity_verified?: boolean
+              });
+            }
           } catch (parseError) {
             console.error("解析用户数据出错:", parseError)
             setError("数据解析错误")
@@ -268,7 +280,8 @@ export default function ProfilePage() {
       
       if (response.success && response.data) {
         // 处理各种可能的返回字段名
-        const avatarUrl = response.data.avatarUrl || response.data.avatar_url || response.data.avatar
+        const avatarData = response.data as { avatarUrl?: string; avatar_url?: string; avatar?: string };
+        const avatarUrl = avatarData.avatarUrl || avatarData.avatar_url || avatarData.avatar;
         
         if (!avatarUrl) {
           throw new Error("服务器返回的数据中没有有效的头像URL")
@@ -285,7 +298,7 @@ export default function ProfilePage() {
         updateUser({
           avatar: avatarUrl,
           avatar_url: avatarUrl
-        })
+        } as any)
         
         toast.success("头像已更新")
       } else {
@@ -313,7 +326,13 @@ export default function ProfilePage() {
       const response = await userApi.realNameAuth({ real_name: realName, id_card: idCard });
       if (response.success && response.data) {
         toast.success("实名认证成功");
-        setIdentityInfo(response.data);
+        // 使用类型断言修复类型不匹配
+        const typedData = {
+          real_name: (response.data as any).real_name || realName,
+          id_card: (response.data as any).id_card || idCard,
+          is_identity_verified: true
+        };
+        setIdentityInfo(typedData);
         // 触发资料刷新
         setRetryCount(prev => prev + 1);
       } else {
@@ -348,6 +367,37 @@ export default function ProfilePage() {
       </div>
     )
   }
+
+  // Inside your component, add a section for real name authentication
+  const renderIdentityVerificationSection = () => {
+    // 如果已获取到实名认证信息并且已认证
+    if (identityInfo?.is_identity_verified || profileData?.is_identity_verified) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>实名认证信息</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="text-gray-500">实名状态：</div>
+              <div className="font-medium flex items-center">
+                <Badge className="bg-green-600">已认证</Badge>
+              </div>
+              
+              <div className="text-gray-500">真实姓名：</div>
+              <div className="font-medium">{maskName(identityInfo?.real_name || profileData?.real_name || '')}</div>
+              
+              <div className="text-gray-500">身份证号：</div>
+              <div className="font-medium">{maskIDCard(identityInfo?.id_card || profileData?.id_card || '')}</div>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    // 如果未认证，显示表单
+    return <RealNameAuthForm onSuccess={() => handleRetry()} />;
+  };
 
   return (
     <div className="space-y-6">
@@ -591,27 +641,7 @@ export default function ProfilePage() {
             <CardDescription>完成实名认证后可获得更多平台权益</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profileData.id_card ? (
-              <div>
-                <div className="mb-2">姓名：<span className="font-semibold">{maskName(profileData.real_name || "已认证")}</span></div>
-                <div className="mb-2">身份证号：<span className="font-semibold">{maskIDCard(profileData.id_card || "已认证")}</span></div>
-                <Badge className="bg-green-500">已认证</Badge>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 max-w-md">
-                <div>
-                  <Label htmlFor="realname">真实姓名</Label>
-                  <Input id="realname" value={realName} onChange={e => setRealName(e.target.value)} placeholder="请输入真实姓名" />
-                  </div>
-                <div>
-                  <Label htmlFor="idcard">身份证号</Label>
-                  <Input id="idcard" value={idCard} onChange={e => setIdCard(e.target.value)} placeholder="请输入身份证号" maxLength={18} />
-                </div>
-                <Button onClick={handleRealNameAuth} disabled={isVerifying}>
-                  {isVerifying ? "认证中..." : "提交认证"}
-                  </Button>
-              </div>
-            )}
+            {renderIdentityVerificationSection()}
           </CardContent>
         </Card>
 

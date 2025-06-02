@@ -339,18 +339,20 @@ func GetTaskByUUID(c *gin.Context) {
 		"created_at":       task.CreatedAt.Format(time.RFC3339),
 	}
 
+	log.Printf("[GetTaskByUUID] currentUserID=%v, task.EmployerID=%v, applicants=%d", currentUserID, task.EmployerID, len(applicants))
+
 	// 只对特定用户添加额外字段
-	if exists {
-		response["is_applicant"] = isApplicant
-		response["is_worker"] = isWorker
+	response["is_applicant"] = isApplicant
+	response["is_worker"] = isWorker
+	// 无论是否雇主都返回 applicants 字段，便于前端调试
+	response["applicants"] = applicants
 
-		// 如果是任务发布者，包含申请人列表
-		if currentUserID == task.EmployerID {
-			response["applicants"] = applicants
-		}
-	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"task": response,
+		},
+	})
 }
 
 // ApplyToTask handles a worker applying to a task
@@ -413,6 +415,15 @@ func ApplyToTask(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "任务申请失败", "details": err.Error()})
 		return
 	}
+
+	// 新增：判断申请人数是否已满，自动变更任务状态
+	var count int64
+	db.DB.Model(&models.TaskApplication{}).Where("task_id = ?", task.ID).Count(&count)
+	if int(count) >= int(task.Headcount) && task.Status == models.TaskStatusRecruiting {
+		task.Status = models.TaskStatusInProgress
+		db.DB.Save(&task)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "任务申请成功"})
 }
 

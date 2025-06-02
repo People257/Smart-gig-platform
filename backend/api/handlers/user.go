@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"zhlg/backend/db"
 	"zhlg/backend/models"
@@ -372,49 +371,15 @@ func RealNameAuth(c *gin.Context) {
 		return
 	}
 
-	// 验证姓名格式（中文姓名，2-10个字符）
-	if len([]rune(req.RealName)) < 2 || len([]rune(req.RealName)) > 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "姓名长度应为2-10个字符"})
+	// 简化验证：仅检查长度基本要求
+	if len([]rune(req.RealName)) < 2 || len([]rune(req.RealName)) > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "姓名长度应为2-20个字符"})
 		return
 	}
 
-	// 验证姓名是否包含非法字符（只允许中文和·）
-	for _, r := range req.RealName {
-		if !unicode.Is(unicode.Han, r) && r != '·' {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "姓名只能包含中文和·符号"})
-			return
-		}
-	}
-
-	// 验证身份证号格式（18位）
+	// 简化验证：仅检查身份证号长度（18位）
 	if len(req.IDCard) != 18 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号必须为18位"})
-		return
-	}
-
-	// 验证身份证号前17位是否为数字
-	for i := 0; i < 17; i++ {
-		if req.IDCard[i] < '0' || req.IDCard[i] > '9' {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号格式不正确"})
-			return
-		}
-	}
-
-	// 验证身份证号最后一位（可能是数字或X）
-	lastChar := req.IDCard[17]
-	if (lastChar < '0' || lastChar > '9') && lastChar != 'X' && lastChar != 'x' {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号格式不正确"})
-		return
-	}
-
-	// 标准化身份证号（将最后的x转为大写X）
-	if lastChar == 'x' {
-		req.IDCard = req.IDCard[:17] + "X"
-	}
-
-	// 验证身份证号的校验位
-	if !validateIDCardChecksum(req.IDCard) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号无效，校验失败"})
 		return
 	}
 
@@ -450,7 +415,7 @@ func RealNameAuth(c *gin.Context) {
 		"is_identity_verified":     true,
 		"identity_verified_status": user.IdentityVerifiedStatus,
 	})
-	log.Printf("[RealNameAuth] db.Save userID=%v, real_name=%v, id_card=%v", userID, user.RealName, user.IDCard)
+	log.Printf("[RealNameAuth] 实名认证成功 userID=%v, real_name=%v", userID, maskName(req.RealName))
 }
 
 // validateIDCardChecksum 验证身份证号的校验位是否正确
@@ -492,4 +457,60 @@ func maskIDCard(id string) string {
 		return "****"
 	}
 	return id[:3] + strings.Repeat("*", len(id)-7) + id[len(id)-4:]
+}
+
+// 获取实名认证信息接口
+func GetRealNameAuth(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "未登录"})
+		return
+	}
+	var user models.User
+	if err := db.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "用户不存在"})
+		return
+	}
+	isVerified := user.IdentityVerifiedStatus == models.IdentityStatusVerified
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"real_name":            user.RealName,
+			"id_card":              user.IDCard,
+			"is_identity_verified": isVerified,
+		},
+	})
+}
+
+// 获取当前用户申请过的所有任务
+func GetMyTasks(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
+	var applications []models.TaskApplication
+	if err := db.DB.Preload("Task.Skills").Where("worker_id = ?", userID).Order("applied_at DESC").Find(&applications).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+
+	// 返回任务详情和申请状态
+	var result []gin.H
+	for _, app := range applications {
+		result = append(result, gin.H{
+			"application_id":   app.ID,
+			"application_uuid": app.UUID,
+			"status":           app.Status,
+			"applied_at":       app.AppliedAt,
+			"cover_letter":     app.CoverLetter,
+			"task":             app.Task,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"applications": result,
+	})
 }

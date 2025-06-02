@@ -374,7 +374,7 @@ export const userApi = {
   
   uploadAvatar: async (formData: FormData) => {
     console.log("Calling uploadAvatar API");
-    return fetchApi<{ avatarUrl: string }>("/users/profile/avatar", {
+    return fetchApi<{ avatarUrl?: string; avatar_url?: string; avatar?: string }>("/users/profile/avatar", {
       method: "POST",
       body: formData,
       headers: {}, // Let the browser set the content type with boundary for FormData
@@ -425,14 +425,17 @@ export const userApi = {
   },
   
   realNameAuth: async (data: { real_name: string; id_card: string }) => {
-    console.log("Calling realNameAuth API", data);
-    return fetchApi<{ real_name: string; id_card: string; is_identity_verified: boolean }>(
-      "/users/realname-auth",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
+    console.log("Calling realNameAuth API", { real_name: data.real_name, id_card: `${data.id_card.substring(0, 3)}****` });
+    return fetchApi<{ success: boolean; data?: { real_name?: string; id_card?: string; is_identity_verified?: boolean } }>("/users/realname-auth", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get real name verification status
+  getRealNameVerification: async () => {
+    console.log("Calling getRealNameVerification API");
+    return fetchApi<{ real_name?: string; id_card?: string; is_identity_verified?: boolean }>("/users/realname-auth");
   },
 };
 

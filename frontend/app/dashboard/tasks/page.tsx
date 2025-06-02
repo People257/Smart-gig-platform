@@ -33,6 +33,9 @@ interface Task {
   hourlyRate?: number;
   is_creator?: boolean;
   is_applicant?: boolean;
+  employer?: { name: string };
+  budget_display?: string;
+  created_at?: string;
 }
 
 export default function TasksPage() {
@@ -234,6 +237,20 @@ export default function TasksPage() {
             <CardTitle className="text-lg">{task.title}</CardTitle>
             {getStatusBadge(task.status)}
           </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2 text-sm text-muted-foreground">
+            <div className="flex items-center">
+              <span className="font-medium">雇主：</span>
+              <span>{task.employer?.name || '未知'}</span>
+            </div>
+            <div className="flex items-center">
+              <span className="font-medium">预算：</span>
+              <span>{task.budget_display || '未设置'}</span>
+            </div>
+            <div className="flex items-center">
+              <span className="font-medium">创建时间：</span>
+              <span>{task.created_at ? (typeof task.created_at === 'string' ? task.created_at.split('T')[0] : task.created_at) : '未知'}</span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
@@ -259,10 +276,6 @@ export default function TasksPage() {
               <div className="flex items-center">
                 <Users className="mr-1 h-3.5 w-3.5" />
                 <span>{task.applicants_count || task.applicants || 0}人申请</span>
-              </div>
-              <div className="flex items-center">
-                <Clock className="mr-1 h-3.5 w-3.5" />
-                <span>¥{task.hourly_rate || task.hourlyRate || 0}/小时</span>
               </div>
             </div>
             <div className="flex justify-end gap-2">
