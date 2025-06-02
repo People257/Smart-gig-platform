@@ -205,12 +205,14 @@ export default function DashboardPage() {
                   <h3 className="text-lg font-medium">暂无任务记录</h3>
                   <p className="text-sm text-muted-foreground mt-1 mb-4">您可以发布或申请任务来开始使用平台</p>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Link href="/dashboard/tasks/create">
-                      <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        发布任务
-                      </Button>
-                    </Link>
+                    {user?.user_type === "employer" && (
+                      <Link href="/dashboard/tasks/create">
+                        <Button>
+                          <Plus className="mr-2 h-4 w-4" />
+                          发布任务
+                        </Button>
+                      </Link>
+                    )}
                     <Link href="/tasks">
                       <Button variant="outline">浏览任务</Button>
                     </Link>

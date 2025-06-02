@@ -111,13 +111,15 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">任务管理</h1>
-        <Link href="/dashboard/tasks/create">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">发布任务</span>
-            <span className="sm:hidden">发布</span>
-          </Button>
-        </Link>
+        {user?.user_type === "employer" && (
+          <Link href="/dashboard/tasks/create">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">发布任务</span>
+              <span className="sm:hidden">发布</span>
+            </Button>
+          </Link>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

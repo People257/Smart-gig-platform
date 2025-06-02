@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -21,11 +21,14 @@ export default function CreateTaskPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
-  // 权限判断：仅雇主可访问
-  if (!isLoading && user?.user_type !== "employer") {
-    if (typeof window !== "undefined") {
+  // 权限判断：仅雇主可访问，跳转逻辑放到 useEffect
+  useEffect(() => {
+    if (!isLoading && user?.user_type !== "employer") {
       router.replace("/dashboard");
     }
+  }, [isLoading, user, router]);
+
+  if (!isLoading && user?.user_type !== "employer") {
     return <div className="text-center py-20 text-xl text-red-500">无权限访问</div>;
   }
 
