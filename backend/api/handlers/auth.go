@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -149,7 +150,7 @@ func Register(c *gin.Context) {
 	user := models.User{
 		UUID:                     uuid.New().String(),
 		UserType:                 userType,
-		IdentityVerificationDocs: "[]", // Using empty JSON array instead of empty string
+		IdentityVerificationDocs: datatypes.JSON([]byte("[]")), // Using empty JSON array instead of empty string
 	}
 
 	// Set name if provided

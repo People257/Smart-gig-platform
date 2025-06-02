@@ -23,7 +23,7 @@ export default function CreateTaskPage() {
 
   // 权限判断：仅雇主可访问，跳转逻辑放到 useEffect
   useEffect(() => {
-    if (!isLoading && user?.user_type !== "employer") {
+  if (!isLoading && user?.user_type !== "employer") {
       router.replace("/dashboard");
     }
   }, [isLoading, user, router]);
@@ -74,11 +74,11 @@ export default function CreateTaskPage() {
         title,
         description,
         location_type: locationType,
-        location: locationType === 'offline' ? location : '线上远程',
+        location_details: locationType === 'offline' ? location : '',
         start_date: startDate,
         end_date: endDate,
         payment_type: paymentType,
-        budget: Number(budget),
+        budget_amount: Number(budget),
         headcount: Number(headcount),
         skills,
         is_public: isPublic,

@@ -459,10 +459,25 @@ export const tasksApi = {
   
   applyToTask: async (uuid: string, applicationData: any) => {
     console.log("Calling applyToTask API:", { uuid, applicationData });
-    return fetchApi<{ application: any }>(`/tasks/${uuid}/apply`, {
+    return fetchApi<{ application?: any; require_verification?: boolean; message?: string }>(`/tasks/${uuid}/apply`, {
       method: "POST",
       body: JSON.stringify(applicationData),
     });
+  },
+  
+  completeTask: async (uuid: string) => {
+    console.log("Calling completeTask API:", uuid);
+    return fetchApi<{ message: string }>(`/tasks/${uuid}/complete`, { method: "PUT" });
+  },
+  
+  confirmTaskCompletion: async (uuid: string) => {
+    console.log("Calling confirmTaskCompletion API:", uuid);
+    return fetchApi<{ message: string }>(`/tasks/${uuid}/confirm`, { method: "PUT" });
+  },
+
+  acceptApplication: async (applicationUUID: string) => {
+    console.log("Calling acceptApplication API:", applicationUUID);
+    return fetchApi<{ message: string }>(`/applications/${applicationUUID}/accept`, { method: "PUT" });
   },
 };
 

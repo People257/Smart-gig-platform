@@ -2,6 +2,9 @@ package models
 
 import (
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // WorkerStatus represents the worker's status on an assignment
@@ -30,14 +33,14 @@ const (
 // TaskAssignment represents the task_assignments table
 type TaskAssignment struct {
 	ID                uint           `gorm:"primary_key" json:"id"`
-	UUID              string         `gorm:"type:varchar(36);unique_index;not null" json:"uuid"`
+	UUID              string         `gorm:"type:varchar(36);uniqueIndex;not null" json:"uuid"`
 	TaskApplicationID *uint          `gorm:"unique" json:"task_application_id"`
-	TaskID            uint           `gorm:"not null" json:"task_id"`
-	WorkerID          uint           `gorm:"not null" json:"worker_id"`
-	AssignedAt        time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"assigned_at"`
-	WorkerStatus      WorkerStatus   `gorm:"type:enum('working','submitted','completed','quit');not null;default:'working'" json:"worker_status"`
-	EmployerStatus    EmployerStatus `gorm:"type:enum('in_progress','review_pending','payment_pending','completed','disputed');not null;default:'in_progress'" json:"employer_status"`
-	CompletedAt       *time.Time     `json:"completed_at"`
+	TaskID            uint           `gorm:"index;not null" json:"task_id"`
+	WorkerID          uint           `gorm:"index;not null" json:"worker_id"`
+	AssignedAt        time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP;index" json:"assigned_at"`
+	WorkerStatus      WorkerStatus   `gorm:"type:enum('working','submitted','completed','quit');not null;default:'working';index" json:"worker_status"`
+	EmployerStatus    EmployerStatus `gorm:"type:enum('in_progress','review_pending','payment_pending','completed','disputed');not null;default:'in_progress';index" json:"employer_status"`
+	CompletedAt       *time.Time     `gorm:"index" json:"completed_at"`
 	UpdatedAt         time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 
 	// Relations
@@ -78,7 +81,13 @@ func (ta *TaskAssignment) QuitTask() {
 }
 
 // BeforeCreate is a GORM hook that runs before creating an assignment record
-func (ta *TaskAssignment) BeforeCreate() error {
+func (ta *TaskAssignment) BeforeCreate(tx *gorm.DB) (err error) {
+	// Generate UUID if not set
+	if ta.UUID == "" {
+		ta.UUID = uuid.New().String()
+	}
+
+	// Set default statuses if not specified
 	if ta.WorkerStatus == "" {
 		ta.WorkerStatus = WorkerStatusWorking
 	}

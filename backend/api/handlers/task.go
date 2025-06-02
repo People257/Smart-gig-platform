@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -8,8 +9,11 @@ import (
 	"zhlg/backend/db"
 	"zhlg/backend/models"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // TaskQueryParams represents the query parameters for fetching tasks
@@ -250,20 +254,67 @@ func GetTaskByUUID(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少任务ID"})
 		return
 	}
+
+	// 获取当前登录用户ID（如果有）
+	var currentUserID uint
+	userIDValue, exists := c.Get("userID")
+	if exists {
+		currentUserID = userIDValue.(uint)
+	}
+
 	var task models.Task
-	err := db.DB.Preload("Employer").Preload("Skills").Preload("Applications").Where("uuid = ?", taskUUID).First(&task).Error
+	err := db.DB.Preload("Employer").Preload("Skills").Preload("Applications.Worker").Where("uuid = ?", taskUUID).First(&task).Error
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "任务未找到"})
 		return
 	}
+
+	// 获取当前用户的申请状态（如果是工人）
+	var isApplicant, isWorker bool
+	var application models.TaskApplication
+	var assignment models.TaskAssignment
+
+	if exists {
+		// 检查是否已申请
+		if db.DB.Where("task_id = ? AND worker_id = ?", task.ID, currentUserID).First(&application).Error == nil {
+			isApplicant = true
+		}
+
+		// 检查是否是当前任务的工作者
+		if db.DB.Where("task_id = ? AND worker_id = ?", task.ID, currentUserID).First(&assignment).Error == nil {
+			isWorker = true
+		}
+	}
+
 	skills := make([]string, 0)
 	for _, s := range task.Skills {
 		skills = append(skills, s.Name)
 	}
+
 	locationDisplay := "线上远程"
 	if task.LocationType == models.LocationTypeOffline && task.LocationDetails != nil {
 		locationDisplay = *task.LocationDetails
 	}
+
+	// 格式化申请人信息，只有任务所有者才能看到申请人列表
+	applicants := []gin.H{}
+	if exists && currentUserID == task.EmployerID {
+		for _, app := range task.Applications {
+			applicants = append(applicants, gin.H{
+				"uuid": app.UUID,
+				"worker": gin.H{
+					"uuid":       app.Worker.UUID,
+					"name":       app.Worker.Name,
+					"avatar_url": app.Worker.AvatarURL,
+				},
+				"status":       app.Status,
+				"applied_at":   app.AppliedAt.Format(time.RFC3339),
+				"updated_at":   app.UpdatedAt.Format(time.RFC3339),
+				"cover_letter": app.CoverLetter,
+			})
+		}
+	}
+
 	response := gin.H{
 		"uuid":        task.UUID,
 		"title":       task.Title,
@@ -287,6 +338,18 @@ func GetTaskByUUID(c *gin.Context) {
 		"applicants_count": len(task.Applications),
 		"created_at":       task.CreatedAt.Format(time.RFC3339),
 	}
+
+	// 只对特定用户添加额外字段
+	if exists {
+		response["is_applicant"] = isApplicant
+		response["is_worker"] = isWorker
+
+		// 如果是任务发布者，包含申请人列表
+		if currentUserID == task.EmployerID {
+			response["applicants"] = applicants
+		}
+	}
+
 	c.JSON(http.StatusOK, response)
 }
 
@@ -310,6 +373,12 @@ func ApplyToTask(c *gin.Context) {
 	}
 	if user.UserType != models.UserTypeWorker {
 		c.JSON(http.StatusForbidden, gin.H{"error": "只有零工才能申请任务"})
+		return
+	}
+
+	// 检查用户是否已完成实名认证 - 判断用户是否有身份证信息
+	if user.IDCard == nil || *user.IDCard == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "请先完成实名认证后再申请任务", "require_verification": true})
 		return
 	}
 
@@ -345,4 +414,338 @@ func ApplyToTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "任务申请成功"})
+}
+
+// CompleteTask handles task completion by the worker
+// @Summary Complete a task
+// @Description Mark a task as completed by the worker
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param uuid path string true "Task UUID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/tasks/{uuid}/complete [put]
+func CompleteTask(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
+	taskUUID := c.Param("uuid")
+	if taskUUID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务ID不能为空"})
+		return
+	}
+
+	var task models.Task
+	if err := db.DB.Where("uuid = ?", taskUUID).First(&task).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
+			return
+		}
+		log.Printf("Error finding task: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务失败"})
+		return
+	}
+
+	// Find the task assignment for this worker
+	var assignment models.TaskAssignment
+	if err := db.DB.Where("task_id = ? AND worker_id = ?", task.ID, userID).First(&assignment).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusForbidden, gin.H{"error": "您不是该任务的执行者"})
+			return
+		}
+		log.Printf("Error finding assignment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务分配失败"})
+		return
+	}
+
+	// Check if task status allows completion
+	if task.Status != models.TaskStatusInProgress {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务不在进行中状态，无法完成"})
+		return
+	}
+
+	// Start transaction
+	tx := db.DB.Begin()
+
+	// Submit work
+	assignment.SubmitWork()
+	if err := tx.Save(&assignment).Error; err != nil {
+		tx.Rollback()
+		log.Printf("Error updating assignment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新任务分配状态失败"})
+		return
+	}
+
+	// Update task status to payment_pending
+	task.Status = models.TaskStatusPaymentPending
+	if err := tx.Save(&task).Error; err != nil {
+		tx.Rollback()
+		log.Printf("Error updating task: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新任务状态失败"})
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "完成任务失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "任务已完成，等待雇主确认",
+		"task": gin.H{
+			"uuid":   task.UUID,
+			"status": task.Status,
+		},
+	})
+}
+
+// ConfirmTaskCompletion handles task completion confirmation by the employer
+// @Summary Confirm task completion and process payment
+// @Description Employer confirms task completion and triggers payment to worker
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param uuid path string true "Task UUID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/tasks/{uuid}/confirm [put]
+func ConfirmTaskCompletion(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
+	taskUUID := c.Param("uuid")
+	if taskUUID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务ID不能为空"})
+		return
+	}
+
+	var task models.Task
+	if err := db.DB.Preload("Employer").Where("uuid = ?", taskUUID).First(&task).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
+			return
+		}
+		log.Printf("Error finding task: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务失败"})
+		return
+	}
+
+	// Verify the current user is the employer of this task
+	if task.EmployerID != uint(userID.(uint)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "您不是该任务的雇主"})
+		return
+	}
+
+	// Check if task status allows confirmation
+	if task.Status != models.TaskStatusPaymentPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务不在待付款状态，无法确认"})
+		return
+	}
+
+	// Find the task assignment
+	var assignments []models.TaskAssignment
+	if err := db.DB.Where("task_id = ? AND employer_status = ?", task.ID, models.EmployerStatusReviewPending).Find(&assignments).Error; err != nil {
+		log.Printf("Error finding assignments: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务分配失败"})
+		return
+	}
+
+	if len(assignments) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未找到待确认的任务完成记录"})
+		return
+	}
+
+	// Start transaction
+	tx := db.DB.Begin()
+
+	// Update task status to completed
+	task.Status = models.TaskStatusCompleted
+	if err := tx.Save(&task).Error; err != nil {
+		tx.Rollback()
+		log.Printf("Error updating task: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新任务状态失败"})
+		return
+	}
+
+	successCount := 0
+	for _, assignment := range assignments {
+		// Mark assignment as paid
+		assignment.MarkAsPaid()
+		if err := tx.Save(&assignment).Error; err != nil {
+			log.Printf("Error updating assignment %d: %v", assignment.ID, err)
+			continue
+		}
+
+		// Create transaction for worker payment
+		paymentTransaction := models.Transaction{
+			UUID:          uuid.New().String(),
+			UserID:        uint(assignment.WorkerID),
+			Type:          models.TransactionTypeEarning,
+			Amount:        task.BudgetAmount / float64(len(assignments)), // Split payment if multiple workers
+			Currency:      task.Currency,
+			Status:        models.TransactionStatusCompleted,
+			Title:         "任务完成报酬",
+			Description:   stringPtr(fmt.Sprintf("完成任务：%s", task.Title)),
+			ReferenceID:   &task.ID,
+			ReferenceType: models.ReferenceTypeTask,
+			ReferenceUUID: &task.UUID,
+		}
+
+		now := time.Now()
+		paymentTransaction.CompletedAt = &now
+
+		if err := tx.Create(&paymentTransaction).Error; err != nil {
+			log.Printf("Error creating transaction for worker %d: %v", assignment.WorkerID, err)
+			continue
+		}
+
+		// Update worker's balance
+		var worker models.User
+		if err := tx.First(&worker, assignment.WorkerID).Error; err != nil {
+			log.Printf("Error finding worker %d: %v", assignment.WorkerID, err)
+			continue
+		}
+
+		worker.Balance += paymentTransaction.Amount
+		if err := tx.Save(&worker).Error; err != nil {
+			log.Printf("Error updating worker %d balance: %v", assignment.WorkerID, err)
+			continue
+		}
+
+		successCount++
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "确认任务完成失败"})
+		return
+	}
+
+	if successCount == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "处理付款时出错，请联系客服"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "任务已确认完成，报酬已支付给工作者",
+		"task": gin.H{
+			"uuid":   task.UUID,
+			"status": task.Status,
+		},
+	})
+}
+
+// AcceptTaskApplication handles accepting a worker's application by the task owner
+func AcceptTaskApplication(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
+	applicationUUID := c.Param("uuid")
+	if applicationUUID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少申请ID"})
+		return
+	}
+
+	var application models.TaskApplication
+	if err := db.DB.Preload("Task").Where("uuid = ?", applicationUUID).First(&application).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "申请不存在"})
+		return
+	}
+
+	// 验证当前用户是否是任务的发布者
+	var task models.Task
+	if err := db.DB.First(&task, application.TaskID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "任务信息获取失败"})
+		return
+	}
+
+	if task.EmployerID != uint(userID.(uint)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "您不是该任务的发布者"})
+		return
+	}
+
+	// 验证任务状态是否为招募中
+	if task.Status != models.TaskStatusRecruiting {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务不在招募阶段"})
+		return
+	}
+
+	// 验证申请状态是否为待处理
+	if application.Status != models.ApplicationStatusPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该申请已处理"})
+		return
+	}
+
+	// 开始事务
+	tx := db.DB.Begin()
+
+	// 1. 更新申请状态为已接受
+	application.Accept()
+	if err := tx.Save(&application).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新申请状态失败"})
+		return
+	}
+
+	// 2. 创建任务分配记录
+	assignment := models.TaskAssignment{
+		UUID:              uuid.New().String(),
+		TaskApplicationID: &application.ID,
+		TaskID:            application.TaskID,
+		WorkerID:          application.WorkerID,
+		AssignedAt:        time.Now(),
+		WorkerStatus:      models.WorkerStatusWorking,
+		EmployerStatus:    models.EmployerStatusInProgress,
+	}
+	if err := tx.Create(&assignment).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建任务分配失败"})
+		return
+	}
+
+	// 3. 更新任务状态为进行中
+	task.Status = models.TaskStatusInProgress
+	if err := tx.Save(&task).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新任务状态失败"})
+		return
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "接受申请失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "已成功接受申请，任务已进入进行中状态",
+		"task_id": task.UUID,
+		"status":  task.Status,
+	})
+}
+
+// Helper function to convert a string to a pointer
+func stringPtr(s string) *string {
+	return &s
 }

@@ -602,14 +602,14 @@ export default function ProfilePage() {
                 <div>
                   <Label htmlFor="realname">真实姓名</Label>
                   <Input id="realname" value={realName} onChange={e => setRealName(e.target.value)} placeholder="请输入真实姓名" />
-                </div>
+                  </div>
                 <div>
                   <Label htmlFor="idcard">身份证号</Label>
                   <Input id="idcard" value={idCard} onChange={e => setIdCard(e.target.value)} placeholder="请输入身份证号" maxLength={18} />
                 </div>
                 <Button onClick={handleRealNameAuth} disabled={isVerifying}>
                   {isVerifying ? "认证中..." : "提交认证"}
-                </Button>
+                  </Button>
               </div>
             )}
           </CardContent>

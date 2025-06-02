@@ -2,6 +2,9 @@ package models
 
 import (
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ReviewType represents the type of review
@@ -32,7 +35,12 @@ type Review struct {
 }
 
 // BeforeCreate is a GORM hook that runs before creating a review record
-func (r *Review) BeforeCreate() error {
+func (r *Review) BeforeCreate(tx *gorm.DB) (err error) {
+	// Generate UUID if not set
+	if r.UUID == "" {
+		r.UUID = uuid.New().String()
+	}
+
 	// Enforce rating between 1 and 5
 	if r.Rating < 1 {
 		r.Rating = 1

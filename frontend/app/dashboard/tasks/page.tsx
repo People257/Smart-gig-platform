@@ -112,13 +112,13 @@ export default function TasksPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">任务管理</h1>
         {user?.user_type === "employer" && (
-          <Link href="/dashboard/tasks/create">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">发布任务</span>
-              <span className="sm:hidden">发布</span>
-            </Button>
-          </Link>
+        <Link href="/dashboard/tasks/create">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">发布任务</span>
+            <span className="sm:hidden">发布</span>
+          </Button>
+        </Link>
         )}
       </div>
 
@@ -266,7 +266,7 @@ export default function TasksPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Link href={`/dashboard/tasks/${task.id || task.uuid}`}>
+              <Link href={`/dashboard/tasks/${task.uuid}`}>
                 <Button variant="outline">查看详情</Button>
               </Link>
               {task.status === "recruiting" && !task.is_creator && !task.is_applicant && (

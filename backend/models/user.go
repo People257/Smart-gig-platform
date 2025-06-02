@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +45,7 @@ type User struct {
 	PhoneVerifiedAt          *time.Time                 `json:"phone_verified_at"`
 	EmailVerifiedAt          *time.Time                 `json:"email_verified_at"`
 	IdentityVerifiedStatus   IdentityVerificationStatus `gorm:"type:enum('not_verified','pending','verified','rejected');not null;default:'not_verified'" json:"identity_verified_status"`
-	IdentityVerificationDocs string                     `gorm:"type:json" json:"-"`
+	IdentityVerificationDocs datatypes.JSON             `gorm:"type:json" json:"identity_verification_docs"`
 	Balance                  float64                    `gorm:"type:decimal(12,2);not null;default:0.00" json:"balance"`
 	CreatedAt                time.Time                  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                time.Time                  `gorm:"autoUpdateTime" json:"updated_at"`

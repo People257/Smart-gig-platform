@@ -59,14 +59,14 @@ export default function LoginPage() {
   
   // Phone verification state
   const [isSendingPhoneCode, setIsSendingPhoneCode] = useState(false)
-  const [phoneNumber, setPhoneNumber] = useState("")
+  const [phone_number, setPhoneNumber] = useState("")
   const [phoneVerificationCode, setPhoneVerificationCode] = useState("")
   const [phoneCountdown, setPhoneCountdown] = useState(0)
   
   // Email verification state
   const [isSendingEmailCode, setIsSendingEmailCode] = useState(false)
   const [email, setEmail] = useState("")
-  const [emailPassword, setEmailPassword] = useState("")
+  const [password, setEmailPassword] = useState("")
   const [emailVerificationCode, setEmailVerificationCode] = useState("")
   const [emailCountdown, setEmailCountdown] = useState(0)
   const [emailLoginWithPassword, setEmailLoginWithPassword] = useState(true)
@@ -102,7 +102,7 @@ export default function LoginPage() {
   })
 
   const handleSendPhoneCode = async () => {
-    if (!phoneNumber || phoneNumber.length < 11) {
+    if (!phone_number || phone_number.length < 11) {
       toast({
         variant: "destructive",
         title: "Invalid phone number",
@@ -115,7 +115,7 @@ export default function LoginPage() {
       setIsSendingPhoneCode(true)
       
       const response = await authApi.sendVerificationCode({
-        phone_number: phoneNumber,
+        phone_number: phone_number,
         target: "phone",
         method: "login",
       })
@@ -213,23 +213,23 @@ export default function LoginPage() {
           method: "username",
         }
       } else if (method === "phone") {
-        console.log("Attempting phone login with:", { phone_number: phoneNumber, verification_code: phoneVerificationCode })
+        console.log("Attempting phone login with:", { phone_number: phone_number, verification_code: phoneVerificationCode })
         loginData = {
-          phone_number: phoneNumber,
+          phone_number: phone_number,
           verification_code: phoneVerificationCode,
           method: "phone",
         }
       } else { // email
         console.log("Attempting email login with:", { 
           email, 
-          password: emailLoginWithPassword ? emailPassword : undefined,
+          password: emailLoginWithPassword ? password : undefined,
           verification_code: emailLoginWithPassword ? undefined : emailVerificationCode 
         })
         loginData = {
           email: email,
           method: "email",
           ...(emailLoginWithPassword 
-            ? { password: emailPassword }
+            ? { password: password }
             : { verification_code: emailVerificationCode })
         }
       }
@@ -278,7 +278,7 @@ export default function LoginPage() {
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!phoneNumber || phoneNumber.length < 11) {
+    if (!phone_number || phone_number.length < 11) {
       toast({
         variant: "destructive",
         title: "Invalid phone number",
@@ -312,7 +312,7 @@ export default function LoginPage() {
     }
     
     if (emailLoginWithPassword) {
-      if (!emailPassword || emailPassword.length < 6) {
+      if (!password || password.length < 6) {
         toast({
           variant: "destructive",
           title: "Invalid password",
@@ -441,7 +441,7 @@ export default function LoginPage() {
                       <Input 
                         type="password"
                         placeholder="输入您的密码"
-                        value={emailPassword}
+                        value={password}
                         onChange={(e) => setEmailPassword(e.target.value)}
                       />
                     </div>
@@ -478,7 +478,7 @@ export default function LoginPage() {
                     <FormLabel>手机号</FormLabel>
                     <Input 
                       placeholder="输入您的手机号"
-                      value={phoneNumber}
+                      value={phone_number}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                     />
                   </div>
@@ -495,7 +495,7 @@ export default function LoginPage() {
                         type="button"
                         variant="outline"
                         onClick={handleSendPhoneCode}
-                        disabled={isSendingPhoneCode || phoneCountdown > 0 || phoneNumber.length < 11}
+                        disabled={isSendingPhoneCode || phoneCountdown > 0 || phone_number.length < 11}
                       >
                         {phoneCountdown > 0 ? `${phoneCountdown}s` : (isSendingPhoneCode ? "发送中..." : "获取验证码")}
                       </Button>

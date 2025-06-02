@@ -53,6 +53,15 @@ func SetupRoutes(r *gin.Engine) {
 		tasks.POST("", middlewares.AuthRequired(), middlewares.EmployerRequired(), handlers.CreateTask)
 		tasks.GET("/:uuid", handlers.GetTaskByUUID)
 		tasks.POST("/:uuid/apply", middlewares.AuthRequired(), middlewares.WorkerRequired(), handlers.ApplyToTask)
+		tasks.PUT("/:uuid/complete", middlewares.AuthRequired(), middlewares.WorkerRequired(), handlers.CompleteTask)
+		tasks.PUT("/:uuid/confirm", middlewares.AuthRequired(), middlewares.EmployerRequired(), handlers.ConfirmTaskCompletion)
+	}
+
+	// Application routes
+	applications := api.Group("/applications")
+	applications.Use(middlewares.AuthRequired())
+	{
+		applications.PUT("/:uuid/accept", middlewares.EmployerRequired(), handlers.AcceptTaskApplication)
 	}
 
 	// Dashboard routes

@@ -5,11 +5,12 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BarChart, Clock, DollarSign, FileText, Plus, Star } from "lucide-react"
+import { BarChart, Clock, DollarSign, FileText, Plus, Star, RefreshCw } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { dashboardApi } from "@/lib/api"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
+import { Badge } from "@/components/ui/badge"
 
 // 定义仪表盘数据类型
 interface DashboardData {
@@ -22,6 +23,7 @@ interface DashboardData {
     title: string;
     status: string;
     date: string;
+    uuid: string;
   }[];
   activities?: {
     id: string;
@@ -35,27 +37,58 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
   const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoading(true)
-        const { success, data, error } = await dashboardApi.getDashboardData()
-        
-        if (success && data) {
-          setDashboardData(data)
-        } else {
-          toast.error("获取控制台数据失败: " + error)
-        }
-      } catch (error) {
-        console.error('获取控制台数据失败:', error)
-        toast.error("获取数据失败，请稍后重试")
-      } finally {
-        setIsLoading(false)
+  // 提取函数到组件级别，使其可在其他地方调用
+  const fetchDashboardData = async () => {
+    try {
+      setIsLoading(true)
+      const { success, data, error } = await dashboardApi.getDashboardData()
+      
+      if (success && data) {
+        setDashboardData(data)
+      } else {
+        toast.error("获取控制台数据失败: " + error)
       }
+    } catch (error) {
+      console.error('获取控制台数据失败:', error)
+      toast.error("获取数据失败，请稍后重试")
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchDashboardData()
   }, [])
+
+  // 格式化任务状态展示
+  function formatTaskStatus(status: string): string {
+    const statusMap: { [key: string]: string } = {
+      pending_approval: "待批准",
+      recruiting: "招募中",
+      in_progress: "进行中",
+      payment_pending: "待支付",
+      completed: "已完成",
+      closed: "已关闭",
+      rejected: "已拒绝"
+    }
+    
+    return statusMap[status] || status
+  }
+
+  // 获取状态对应的Badge样式
+  function getStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+    const variantMap: { [key: string]: "default" | "secondary" | "destructive" | "outline" } = {
+      recruiting: "default",
+      in_progress: "secondary",
+      payment_pending: "secondary",
+      completed: "outline",
+      closed: "destructive",
+      rejected: "destructive",
+      pending_approval: "outline"
+    }
+    
+    return variantMap[status] || "default"
+  }
 
   return (
     <div className="space-y-6">
@@ -189,8 +222,10 @@ export default function DashboardPage() {
                         <p className="text-sm text-muted-foreground">{task.date}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">{task.status}</span>
-                        <Link href={`/dashboard/tasks/${task.id}`}>
+                        <Badge variant={getStatusVariant(task.status)}>
+                          {formatTaskStatus(task.status)}
+                        </Badge>
+                        <Link href={`/dashboard/tasks/${task.uuid}`}>
                           <Button size="sm" variant="outline">查看</Button>
                         </Link>
                       </div>
@@ -206,12 +241,12 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground mt-1 mb-4">您可以发布或申请任务来开始使用平台</p>
                   <div className="flex flex-col sm:flex-row gap-2">
                     {user?.user_type === "employer" && (
-                      <Link href="/dashboard/tasks/create">
-                        <Button>
-                          <Plus className="mr-2 h-4 w-4" />
-                          发布任务
-                        </Button>
-                      </Link>
+                    <Link href="/dashboard/tasks/create">
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        发布任务
+                      </Button>
+                    </Link>
                     )}
                     <Link href="/tasks">
                       <Button variant="outline">浏览任务</Button>
@@ -219,6 +254,20 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-4 flex justify-center">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setIsLoading(true);
+                    fetchDashboardData();
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  刷新数据
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -316,7 +365,7 @@ export default function DashboardPage() {
                       <h3 className="font-medium">{task.title}</h3>
                       <p className="text-sm text-muted-foreground">{task.date}</p>
                     </div>
-                    <Link href={`/dashboard/tasks/${task.id}`}>
+                    <Link href={`/dashboard/tasks/${task.uuid}`}>
                       <Button size="sm" variant="outline">查看</Button>
                     </Link>
                   </div>

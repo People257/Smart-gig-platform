@@ -16,23 +16,13 @@ type WithdrawalRequest struct {
 
 // GetUserWallet handles fetching a user's wallet information
 func GetUserWallet(c *gin.Context) {
-	// In a real application, we would get the user ID from the authenticated user
-	// userID := c.GetUint("userID")
-
-	// In a real application, we would retrieve the user's wallet from the database
-	// var user models.User
-	// if db.Where("id = ?", userID).First(&user).RecordNotFound() {
-	//   c.JSON(http.StatusNotFound, gin.H{"error": "用户未找到"})
-	//   return
-	// }
-
-	// Create mock wallet for demo
+	// TODO: Replace mock data with real user wallet data from database
 	wallet := gin.H{
-		"balance":      1258.75,
-		"currency":     "CNY",
-		"pending":      450.00,
-		"total_earned": 3500.00,
-		"total_spent":  1200.00,
+		// "balance":      1258.75, // 删除写死金额
+		"currency": "CNY",
+		// "pending":      450.00,
+		// "total_earned": 3500.00,
+		// "total_spent":  1200.00,
 		"accounts": []gin.H{
 			{
 				"uuid":       uuid.New().String(),
@@ -345,12 +335,9 @@ func UpdatePaymentSettings(c *gin.Context) {
 
 // GetPaymentsData handles fetching a user's payment data
 func GetPaymentsData(c *gin.Context) {
-	// In a real application, we would get the user ID from the authenticated user
-	// userID := c.GetUint("userID")
-
-	// Create mock payment data for demo
+	// TODO: Replace mock data with real user payment data from database
 	c.JSON(http.StatusOK, gin.H{
-		"balance":  1250.75,
+		// "balance":  1250.75, // 删除写死金额
 		"currency": "CNY",
 		"recent_transactions": []gin.H{
 			{

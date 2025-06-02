@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"zhlg/backend/db"
 	"zhlg/backend/models"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -77,6 +79,9 @@ func UpdateUserProfile(c *gin.Context) {
 			db.DB.Where("name = ?", skillName).FirstOrCreate(&skill, models.Skill{Name: skillName})
 			db.DB.Model(&user).Association("Skills").Append(&skill)
 		}
+	}
+	if len(user.IdentityVerificationDocs) == 0 {
+		user.IdentityVerificationDocs = datatypes.JSON([]byte("null"))
 	}
 	if err := db.DB.Save(&user).Error; err != nil {
 		log.Printf("[UpdateUserProfile] userID=%v, 更新字段: name=%v, bio=%v, location=%v, hourlyRate=%v, skills=%v", userID, req.Name, req.Bio, req.Location, req.HourlyRate, req.Skills)
@@ -366,16 +371,70 @@ func RealNameAuth(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误", "details": err.Error()})
 		return
 	}
-	// 简单校验身份证号格式（可扩展更严格校验）
+
+	// 验证姓名格式（中文姓名，2-10个字符）
+	if len([]rune(req.RealName)) < 2 || len([]rune(req.RealName)) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "姓名长度应为2-10个字符"})
+		return
+	}
+
+	// 验证姓名是否包含非法字符（只允许中文和·）
+	for _, r := range req.RealName {
+		if !unicode.Is(unicode.Han, r) && r != '·' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "姓名只能包含中文和·符号"})
+			return
+		}
+	}
+
+	// 验证身份证号格式（18位）
 	if len(req.IDCard) != 18 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号必须为18位"})
+		return
+	}
+
+	// 验证身份证号前17位是否为数字
+	for i := 0; i < 17; i++ {
+		if req.IDCard[i] < '0' || req.IDCard[i] > '9' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号格式不正确"})
+			return
+		}
+	}
+
+	// 验证身份证号最后一位（可能是数字或X）
+	lastChar := req.IDCard[17]
+	if (lastChar < '0' || lastChar > '9') && lastChar != 'X' && lastChar != 'x' {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号格式不正确"})
 		return
 	}
+
+	// 标准化身份证号（将最后的x转为大写X）
+	if lastChar == 'x' {
+		req.IDCard = req.IDCard[:17] + "X"
+	}
+
+	// 验证身份证号的校验位
+	if !validateIDCardChecksum(req.IDCard) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "身份证号无效，校验失败"})
+		return
+	}
+
 	var user models.User
 	if err := db.DB.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+
+	// 检查该身份证是否已被其他账户使用
+	var existingUser models.User
+	result := db.DB.Where("id_card = ? AND id != ?", req.IDCard, userID).First(&existingUser)
+	if result.Error == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "该身份证已被其他账户使用"})
+		return
+	} else if result.Error != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证身份证信息失败"})
+		return
+	}
+
 	user.RealName = &req.RealName
 	user.IDCard = &req.IDCard
 	user.IdentityVerifiedStatus = models.IdentityStatusVerified
@@ -392,6 +451,27 @@ func RealNameAuth(c *gin.Context) {
 		"identity_verified_status": user.IdentityVerifiedStatus,
 	})
 	log.Printf("[RealNameAuth] db.Save userID=%v, real_name=%v, id_card=%v", userID, user.RealName, user.IDCard)
+}
+
+// validateIDCardChecksum 验证身份证号的校验位是否正确
+func validateIDCardChecksum(id string) bool {
+	if len(id) != 18 {
+		return false
+	}
+
+	// 身份证号码加权因子
+	weight := [17]int{7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2}
+
+	// 校验码对应值
+	validate := [11]byte{'1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'}
+
+	sum := 0
+	for i := 0; i < 17; i++ {
+		sum += int(id[i]-'0') * weight[i]
+	}
+
+	mod := sum % 11
+	return id[17] == validate[mod]
 }
 
 // 姓名脱敏：只显示第一个字和最后一个字
