@@ -35,21 +35,22 @@ const (
 
 // Transaction represents a financial transaction in the system
 type Transaction struct {
-	ID            uint              `gorm:"primaryKey"`
-	UUID          string            `gorm:"type:varchar(36);uniqueIndex"`
-	UserID        uint              `gorm:"index"`
-	Type          TransactionType   `gorm:"type:varchar(20);index"`
-	Amount        float64           `gorm:"type:decimal(10,2)"`
-	Currency      string            `gorm:"type:char(3);default:'CNY'"`
-	Status        TransactionStatus `gorm:"type:varchar(20);index"`
-	Title         string            `gorm:"type:varchar(100)"`
-	Description   *string           `gorm:"type:text"`
-	ReferenceID   *uint             `gorm:"index"`
-	ReferenceType ReferenceType     `gorm:"type:varchar(20);index"`
-	ReferenceUUID *string           `gorm:"type:varchar(36);index"`
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	CompletedAt   *time.Time
+	ID               uint              `gorm:"primaryKey"`
+	UUID             string            `gorm:"type:varchar(36);uniqueIndex"`
+	UserID           uint              `gorm:"index"`
+	TaskAssignmentID *uint             `gorm:"index"`
+	Type             TransactionType   `gorm:"type:varchar(20);index"`
+	Amount           float64           `gorm:"type:decimal(10,2)"`
+	Currency         string            `gorm:"type:char(3);default:'CNY'"`
+	Status           TransactionStatus `gorm:"type:varchar(20);index"`
+	Title            string            `gorm:"type:varchar(100)"`
+	Description      *string           `gorm:"type:text"`
+	ReferenceID      *uint             `gorm:"index"`
+	ReferenceType    ReferenceType     `gorm:"type:varchar(20);index"`
+	ReferenceUUID    *string           `gorm:"type:varchar(36);index"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CompletedAt      *time.Time
 }
 
 // Withdrawal statuses

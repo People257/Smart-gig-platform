@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 // InitModels sets up the database models
@@ -22,34 +22,33 @@ func InitModels(db *gorm.DB) {
 		&ActivityLog{},
 	)
 
-	// Define foreign key relationships
-	db.Model(&UserSkill{}).AddForeignKey("user_id", "users(id)", "CASCADE", "NO ACTION")
-	db.Model(&UserSkill{}).AddForeignKey("skill_id", "skills(id)", "CASCADE", "NO ACTION")
+	// Define foreign key relationships using the new GORM API
+	db.Migrator().CreateConstraint(&UserSkill{}, "fk_user_skills_user")
+	db.Migrator().CreateConstraint(&UserSkill{}, "fk_user_skills_skill")
 
-	db.Model(&Task{}).AddForeignKey("employer_id", "users(id)", "RESTRICT", "NO ACTION")
+	db.Migrator().CreateConstraint(&Task{}, "fk_tasks_employer")
 
-	db.Model(&TaskSkill{}).AddForeignKey("task_id", "tasks(id)", "CASCADE", "NO ACTION")
-	db.Model(&TaskSkill{}).AddForeignKey("skill_id", "skills(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&TaskSkill{}, "fk_task_skills_task")
+	db.Migrator().CreateConstraint(&TaskSkill{}, "fk_task_skills_skill")
 
-	db.Model(&TaskApplication{}).AddForeignKey("task_id", "tasks(id)", "CASCADE", "NO ACTION")
-	db.Model(&TaskApplication{}).AddForeignKey("worker_id", "users(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&TaskApplication{}, "fk_task_applications_task")
+	db.Migrator().CreateConstraint(&TaskApplication{}, "fk_task_applications_worker")
 
-	db.Model(&TaskAssignment{}).AddForeignKey("task_application_id", "task_applications(id)", "SET NULL", "NO ACTION")
-	db.Model(&TaskAssignment{}).AddForeignKey("task_id", "tasks(id)", "CASCADE", "NO ACTION")
-	db.Model(&TaskAssignment{}).AddForeignKey("worker_id", "users(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&TaskAssignment{}, "fk_task_assignments_application")
+	db.Migrator().CreateConstraint(&TaskAssignment{}, "fk_task_assignments_task")
+	db.Migrator().CreateConstraint(&TaskAssignment{}, "fk_task_assignments_worker")
 
-	db.Model(&Transaction{}).AddForeignKey("user_id", "users(id)", "RESTRICT", "NO ACTION")
-	db.Model(&Transaction{}).AddForeignKey("related_user_id", "users(id)", "SET NULL", "NO ACTION")
-	db.Model(&Transaction{}).AddForeignKey("task_assignment_id", "task_assignments(id)", "SET NULL", "NO ACTION")
+	db.Migrator().CreateConstraint(&Transaction{}, "fk_transactions_user")
+	db.Migrator().CreateConstraint(&Transaction{}, "fk_transactions_task_assignment")
 
-	db.Model(&WithdrawalAccount{}).AddForeignKey("user_id", "users(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&WithdrawalAccount{}, "fk_withdrawal_accounts_user")
 
-	db.Model(&Review{}).AddForeignKey("task_assignment_id", "task_assignments(id)", "CASCADE", "NO ACTION")
-	db.Model(&Review{}).AddForeignKey("reviewer_id", "users(id)", "CASCADE", "NO ACTION")
-	db.Model(&Review{}).AddForeignKey("reviewee_id", "users(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&Review{}, "fk_reviews_task_assignment")
+	db.Migrator().CreateConstraint(&Review{}, "fk_reviews_reviewer")
+	db.Migrator().CreateConstraint(&Review{}, "fk_reviews_reviewee")
 
-	db.Model(&UserPortfolio{}).AddForeignKey("user_id", "users(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&UserPortfolio{}, "fk_user_portfolios_user")
 
-	db.Model(&UserFavorite{}).AddForeignKey("user_id", "users(id)", "CASCADE", "NO ACTION")
-	db.Model(&UserFavorite{}).AddForeignKey("task_id", "tasks(id)", "CASCADE", "NO ACTION")
+	db.Migrator().CreateConstraint(&UserFavorite{}, "fk_user_favorites_user")
+	db.Migrator().CreateConstraint(&UserFavorite{}, "fk_user_favorites_task")
 }

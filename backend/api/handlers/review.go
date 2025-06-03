@@ -1,19 +1,24 @@
 package handlers
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"time"
+	"zhlg/backend/db"
+	"zhlg/backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // CreateReviewRequest represents the request body for creating a new review
 type CreateReviewRequest struct {
-	Rating       int    `json:"rating" binding:"required,min=1,max=5"`
+	Rating       uint8  `json:"rating" binding:"required,min=1,max=5"`
 	Comment      string `json:"comment" binding:"required"`
 	TaskUUID     string `json:"task_uuid" binding:"required"`
-	ReviewedUUID string `json:"reviewed_uuid" binding:"required"`
+	RevieweeUUID string `json:"reviewee_uuid" binding:"required"`
 }
 
 // GetUserReviews handles fetching reviews for a specific user
@@ -24,186 +29,379 @@ func GetUserReviews(c *gin.Context) {
 		return
 	}
 
-	// In a real application, we would get the user from the database
-	// var user models.User
-	// if db.Where("uuid = ?", userUUID).First(&user).RecordNotFound() {
-	//   c.JSON(http.StatusNotFound, gin.H{"error": "用户未找到"})
-	//   return
-	// }
+	// 获取用户信息
+	var user models.User
+	if err := db.DB.Where("uuid = ?", userUUID).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户未找到"})
+		} else {
+			log.Printf("[GetUserReviews] 查询用户失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户数据失败"})
+		}
+		return
+	}
 
-	// In a real application, we would get the reviews for this user from the database
-	// var reviews []models.Review
-	// db.Where("reviewed_id = ?", user.ID).
-	//   Preload("Reviewer").
-	//   Preload("Task").
-	//   Order("created_at DESC").
-	//   Find(&reviews)
+	// 获取用户收到的评价
+	var dbReviews []models.Review
+	if err := db.DB.Where("reviewee_id = ?", user.ID).
+		Preload("Reviewer").
+		Preload("TaskAssignment").
+		Preload("TaskAssignment.Task").
+		Order("created_at DESC").
+		Find(&dbReviews).Error; err != nil {
+		log.Printf("[GetUserReviews] 查询评价失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评价数据失败"})
+		return
+	}
 
-	// Create mock reviews for demo
+	// 格式化评价数据
 	reviews := make([]gin.H, 0)
+	for _, review := range dbReviews {
+		var taskTitle string
+		if review.TaskAssignment.Task.Title != "" {
+			taskTitle = review.TaskAssignment.Task.Title
+		} else {
+			taskTitle = "未知任务"
+		}
 
-	for i := 1; i <= 5; i++ {
-		reviews = append(reviews, gin.H{
-			"uuid":    uuid.New().String(),
-			"rating":  5 - (i % 3),
-			"comment": "这位工作者非常专业，按时完成了任务，并且质量很高。我非常满意他的工作成果，期待今后有机会再次合作。",
+		reviewItem := gin.H{
+			"uuid":    review.UUID,
+			"rating":  review.Rating,
+			"comment": review.Comment,
 			"reviewer": gin.H{
-				"uuid":       uuid.New().String(),
-				"name":       "评价人 " + uuid.New().String()[0:8],
-				"avatar_url": "https://example.com/avatar.jpg",
+				"uuid":       review.Reviewer.UUID,
+				"name":       review.Reviewer.Name,
+				"avatar_url": review.Reviewer.AvatarURL,
 			},
 			"task": gin.H{
-				"uuid":  uuid.New().String(),
-				"title": "UI设计项目",
+				"uuid":  review.TaskAssignment.Task.UUID,
+				"title": taskTitle,
 			},
-			"created_at": time.Now().AddDate(0, 0, -i*7).Format(time.RFC3339),
-		})
+			"created_at": review.CreatedAt.Format(time.RFC3339),
+		}
+		reviews = append(reviews, reviewItem)
 	}
 
-	// Calculate average rating
-	totalRating := 0
-	for _, review := range reviews {
-		totalRating += review["rating"].(int)
+	// 计算平均评分
+	var stats struct {
+		AvgRating float64
+		Count     int64
 	}
 
-	averageRating := 0.0
-	if len(reviews) > 0 {
-		averageRating = float64(totalRating) / float64(len(reviews))
-	}
+	db.DB.Model(&models.Review{}).
+		Select("COALESCE(AVG(rating), 0) as avg_rating, COUNT(*) as count").
+		Where("reviewee_id = ?", user.ID).
+		Scan(&stats)
 
 	c.JSON(http.StatusOK, gin.H{
 		"reviews": reviews,
 		"stats": gin.H{
-			"total":          len(reviews),
-			"average_rating": averageRating,
+			"total":          stats.Count,
+			"average_rating": stats.AvgRating,
 		},
 	})
 }
 
 // CreateReview handles creating a new review
 func CreateReview(c *gin.Context) {
+	// 获取当前用户ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
 	var req CreateReviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
 		return
 	}
 
-	// In a real application, we would get the reviewer ID from the authenticated user
-	// reviewerID := c.GetUint("userID")
-
-	// In a real application, we would check if the task exists and is completed
-	// var task models.Task
-	// if db.Where("uuid = ? AND status = ?", req.TaskUUID, models.TaskStatusCompleted).First(&task).RecordNotFound() {
-	//   c.JSON(http.StatusBadRequest, gin.H{"error": "任务不存在或未完成"})
-	//   return
-	// }
-
-	// In a real application, we would check if the reviewer is the employer of the task
-	// if task.EmployerID != reviewerID {
-	//   c.JSON(http.StatusForbidden, gin.H{"error": "无权评价此任务"})
-	//   return
-	// }
-
-	// In a real application, we would check if the reviewed user was assigned to the task
-	// var taskAssignment models.TaskAssignment
-	// if db.Where("task_id = ? AND status = ?", task.ID, models.AssignmentStatusCompleted).First(&taskAssignment).RecordNotFound() {
-	//   c.JSON(http.StatusBadRequest, gin.H{"error": "该用户未完成此任务"})
-	//   return
-	// }
-
-	// var reviewedUser models.User
-	// if db.Where("uuid = ?", req.ReviewedUUID).First(&reviewedUser).RecordNotFound() {
-	//   c.JSON(http.StatusNotFound, gin.H{"error": "被评价用户未找到"})
-	//   return
-	// }
-
-	// In a real application, we would check if a review already exists
-	// var existingReview models.Review
-	// if !db.Where("reviewer_id = ? AND reviewed_id = ? AND task_id = ?",
-	//     reviewerID, reviewedUser.ID, task.ID).First(&existingReview).RecordNotFound() {
-	//   c.JSON(http.StatusBadRequest, gin.H{"error": "已对此任务进行评价"})
-	//   return
-	// }
-
-	// Create a new review
-	review := gin.H{
-		"uuid":    uuid.New().String(),
-		"rating":  req.Rating,
-		"comment": req.Comment,
-		"reviewer": gin.H{
-			"uuid":       "reviewer-uuid-123",
-			"name":       "测试评价人",
-			"avatar_url": "https://example.com/avatar.jpg",
-		},
-		"reviewed": gin.H{
-			"uuid":       req.ReviewedUUID,
-			"name":       "被评价人",
-			"avatar_url": "https://example.com/avatar.jpg",
-		},
-		"task": gin.H{
-			"uuid":  req.TaskUUID,
-			"title": "测试任务",
-		},
-		"created_at": time.Now().Format(time.RFC3339),
+	// 检查任务是否存在且已完成
+	var task models.Task
+	if err := db.DB.Where("uuid = ? AND status = ?", req.TaskUUID, "completed").First(&task).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "任务不存在或未完成"})
+		} else {
+			log.Printf("[CreateReview] 查询任务失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取任务数据失败"})
+		}
+		return
 	}
 
-	// In a real application, we would save the review to the database
-	// db.Create(&review)
+	// 获取被评价用户信息
+	var reviewee models.User
+	if err := db.DB.Where("uuid = ?", req.RevieweeUUID).First(&reviewee).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "被评价用户未找到"})
+		} else {
+			log.Printf("[CreateReview] 查询被评价用户失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户数据失败"})
+		}
+		return
+	}
 
-	// In a real application, we would update the user's average rating
-	// var userReviews []models.Review
-	// db.Where("reviewed_id = ?", reviewedUser.ID).Find(&userReviews)
+	// 获取任务分配信息
+	var taskAssignment models.TaskAssignment
+	if err := db.DB.Where("task_id = ? AND (user_id = ? OR user_id = ?)",
+		task.ID, userID, reviewee.ID).First(&taskAssignment).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "找不到相关的任务分配记录"})
+		} else {
+			log.Printf("[CreateReview] 查询任务分配记录失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取任务分配数据失败"})
+		}
+		return
+	}
 
-	// totalRating := 0
-	// for _, r := range userReviews {
-	//   totalRating += r.Rating
-	// }
+	// 检查评价类型
+	var reviewerType models.ReviewType
+	if userID == task.EmployerID {
+		// 雇主评价零工
+		reviewerType = models.ReviewTypeEmployerToWorker
+		if reviewee.ID == task.EmployerID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "雇主不能评价自己"})
+			return
+		}
+	} else {
+		// 零工评价雇主
+		reviewerType = models.ReviewTypeWorkerToEmployer
+		if reviewee.ID != task.EmployerID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "零工只能评价雇主"})
+			return
+		}
+	}
 
-	// averageRating := float64(totalRating) / float64(len(userReviews))
-	// db.Model(&reviewedUser).Update("rating", averageRating)
+	// 检查是否已经评价过
+	var existingReview models.Review
+	if err := db.DB.Where("reviewer_id = ? AND reviewee_id = ? AND task_assignment_id = ?",
+		userID, reviewee.ID, taskAssignment.ID).First(&existingReview).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "已对此任务进行评价"})
+		return
+	}
 
-	// Return success response
+	// 创建新评价
+	comment := req.Comment // 使用指针
+	review := models.Review{
+		UUID:             uuid.New().String(),
+		TaskAssignmentID: taskAssignment.ID,
+		ReviewerID:       uint(userID.(float64)), // 转换为uint类型
+		RevieweeID:       reviewee.ID,
+		Rating:           req.Rating,
+		Comment:          &comment,
+		ReviewType:       reviewerType,
+		CreatedAt:        time.Now(),
+	}
+
+	// 开始事务
+	tx := db.DB.Begin()
+	if tx.Error != nil {
+		log.Printf("[CreateReview] 开启事务失败: %v", tx.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建评价失败"})
+		return
+	}
+
+	// 保存评价
+	if err := tx.Create(&review).Error; err != nil {
+		tx.Rollback()
+		log.Printf("[CreateReview] 创建评价失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存评价失败"})
+		return
+	}
+
+	// 更新用户的平均评分
+	var stats struct {
+		AvgRating float64
+	}
+	if err := tx.Model(&models.Review{}).
+		Select("COALESCE(AVG(rating), 0) as avg_rating").
+		Where("reviewee_id = ?", reviewee.ID).
+		Scan(&stats).Error; err != nil {
+		tx.Rollback()
+		log.Printf("[CreateReview] 计算平均评分失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新评分失败"})
+		return
+	}
+
+	// 更新用户的评分字段（假设User模型有Rating字段）
+	if err := tx.Model(&reviewee).Update("rating", stats.AvgRating).Error; err != nil {
+		tx.Rollback()
+		log.Printf("[CreateReview] 更新用户评分失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新用户评分失败"})
+		return
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("[CreateReview] 提交事务失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存评价失败"})
+		return
+	}
+
+	// 获取评价人信息
+	var reviewer models.User
+	if err := db.DB.First(&reviewer, userID).Error; err != nil {
+		log.Printf("[CreateReview] 查询评价人失败: %v", err)
+	}
+
+	// 返回成功响应
 	c.JSON(http.StatusOK, gin.H{
+		"success": true,
 		"message": "评价提交成功",
-		"review":  review,
+		"review": gin.H{
+			"uuid":    review.UUID,
+			"rating":  review.Rating,
+			"comment": review.Comment,
+			"reviewer": gin.H{
+				"uuid":       reviewer.UUID,
+				"name":       reviewer.Name,
+				"avatar_url": reviewer.AvatarURL,
+			},
+			"reviewee": gin.H{
+				"uuid":       reviewee.UUID,
+				"name":       reviewee.Name,
+				"avatar_url": reviewee.AvatarURL,
+			},
+			"task": gin.H{
+				"uuid":  task.UUID,
+				"title": task.Title,
+			},
+			"created_at": review.CreatedAt.Format(time.RFC3339),
+		},
 	})
 }
 
 // GetPendingReviews handles fetching reviews that the user needs to submit
 func GetPendingReviews(c *gin.Context) {
-	// In a real application, we would get the user ID from the authenticated user
-	// userID := c.GetUint("userID")
+	// 获取当前用户ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
 
-	// In a real application, we would get the tasks that the user needs to review
-	// For employers: completed tasks they've posted where they haven't left a review
-	// var pendingReviews []models.Task
-	// db.Where(
-	//   "employer_id = ? AND status = ? AND id NOT IN (SELECT task_id FROM reviews WHERE reviewer_id = ?)",
-	//   userID, models.TaskStatusCompleted, userID,
-	// ).
-	//   Preload("Worker").
-	//   Find(&pendingReviews)
+	userType, _ := c.Get("userType")
+	log.Printf("[GetPendingReviews] 获取待评价任务，用户ID=%v, 类型=%v", userID, userType)
 
-	// Create mock pending reviews for demo
 	pendingReviews := make([]gin.H, 0)
 
-	for i := 1; i <= 3; i++ {
-		pendingReviews = append(pendingReviews, gin.H{
-			"task": gin.H{
-				"uuid":  uuid.New().String(),
-				"title": "待评价任务 " + uuid.New().String()[0:8],
-			},
-			"user": gin.H{
-				"uuid":       uuid.New().String(),
-				"name":       "待评价用户 " + uuid.New().String()[0:8],
-				"avatar_url": "https://example.com/avatar.jpg",
-				"user_type":  "worker",
-			},
-			"completed_at": time.Now().AddDate(0, 0, -i).Format(time.RFC3339),
-		})
+	// 根据用户类型获取待评价任务
+	if userType == "employer" {
+		// 雇主视角：查找已完成但未评价的任务
+		var tasks []struct {
+			TaskUUID     string
+			TaskTitle    string
+			WorkerUUID   string
+			WorkerName   string
+			WorkerAvatar string
+			CompletedAt  time.Time
+		}
+
+		query := `
+			SELECT 
+				t.uuid AS task_uuid, 
+				t.title AS task_title,
+				u.uuid AS worker_uuid, 
+				u.name AS worker_name, 
+				u.avatar_url AS worker_avatar,
+				ta.completed_at AS completed_at
+			FROM 
+				tasks t
+			JOIN 
+				task_assignments ta ON t.id = ta.task_id
+			JOIN 
+				users u ON ta.user_id = u.id
+			LEFT JOIN 
+				reviews r ON (r.reviewer_id = ? AND r.reviewee_id = u.id)
+			WHERE 
+				t.employer_id = ? 
+				AND t.status = 'completed'
+				AND r.id IS NULL
+			ORDER BY 
+				ta.completed_at DESC
+		`
+
+		if err := db.DB.Raw(query, userID, userID).Scan(&tasks).Error; err != nil {
+			log.Printf("[GetPendingReviews] 查询雇主待评价任务失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取待评价任务失败"})
+			return
+		}
+
+		for _, task := range tasks {
+			pendingReviews = append(pendingReviews, gin.H{
+				"task": gin.H{
+					"uuid":  task.TaskUUID,
+					"title": task.TaskTitle,
+				},
+				"user": gin.H{
+					"uuid":       task.WorkerUUID,
+					"name":       task.WorkerName,
+					"avatar_url": task.WorkerAvatar,
+					"user_type":  "worker",
+				},
+				"completed_at": task.CompletedAt.Format("2006-01-02"),
+			})
+		}
+	} else {
+		// 零工视角：查找已完成但未评价雇主的任务
+		var tasks []struct {
+			TaskUUID       string
+			TaskTitle      string
+			EmployerUUID   string
+			EmployerName   string
+			EmployerAvatar string
+			CompletedAt    time.Time
+		}
+
+		query := `
+			SELECT 
+				t.uuid AS task_uuid, 
+				t.title AS task_title,
+				u.uuid AS employer_uuid, 
+				u.name AS employer_name, 
+				u.avatar_url AS employer_avatar,
+				ta.completed_at AS completed_at
+			FROM 
+				tasks t
+			JOIN 
+				task_assignments ta ON t.id = ta.task_id
+			JOIN 
+				users u ON t.employer_id = u.id
+			LEFT JOIN 
+				reviews r ON (r.reviewer_id = ? AND r.reviewee_id = u.id)
+			WHERE 
+				ta.worker_id = ? 
+				AND t.status = 'completed'
+				AND r.id IS NULL
+			ORDER BY 
+				ta.completed_at DESC
+		`
+
+		if err := db.DB.Raw(query, userID, userID).Scan(&tasks).Error; err != nil {
+			log.Printf("[GetPendingReviews] 查询零工待评价任务失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取待评价任务失败"})
+			return
+		}
+
+		for _, task := range tasks {
+			pendingReviews = append(pendingReviews, gin.H{
+				"task": gin.H{
+					"uuid":  task.TaskUUID,
+					"title": task.TaskTitle,
+				},
+				"user": gin.H{
+					"uuid":       task.EmployerUUID,
+					"name":       task.EmployerName,
+					"avatar_url": task.EmployerAvatar,
+					"user_type":  "employer",
+				},
+				"completed_at": task.CompletedAt.Format("2006-01-02"),
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
+		"success":         true,
 		"pending_reviews": pendingReviews,
 		"count":           len(pendingReviews),
 	})
@@ -217,49 +415,69 @@ func GetUserRatings(c *gin.Context) {
 		return
 	}
 
-	// In a real application, we would get the user from the database
-	// var user models.User
-	// if db.Where("uuid = ?", userUUID).First(&user).RecordNotFound() {
-	//   c.JSON(http.StatusNotFound, gin.H{"error": "用户未找到"})
-	//   return
-	// }
-
-	// In a real application, we would calculate the ratings from the database
-	// var ratings [5]int
-	// db.Model(&models.Review{}).
-	//   Where("reviewed_id = ?", user.ID).
-	//   Select("rating, COUNT(*) as count").
-	//   Group("rating").
-	//   Scan(&ratings)
-
-	// Create mock ratings for demo
-	ratings := []gin.H{
-		{"rating": 5, "count": 15},
-		{"rating": 4, "count": 7},
-		{"rating": 3, "count": 3},
-		{"rating": 2, "count": 1},
-		{"rating": 1, "count": 0},
+	// 获取用户信息
+	var user models.User
+	if err := db.DB.Where("uuid = ?", userUUID).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户未找到"})
+		} else {
+			log.Printf("[GetUserRatings] 查询用户失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户数据失败"})
+		}
+		return
 	}
 
-	// Calculate total and average
-	totalCount := 0
-	totalRating := 0
-	for _, r := range ratings {
-		count := r["count"].(int)
-		rating := r["rating"].(int)
-		totalCount += count
-		totalRating += rating * count
+	// 获取各评分的统计数据
+	type RatingCount struct {
+		Rating uint8
+		Count  int
+	}
+	var ratingCounts []RatingCount
+
+	if err := db.DB.Model(&models.Review{}).
+		Select("rating, COUNT(*) as count").
+		Where("reviewee_id = ?", user.ID).
+		Group("rating").
+		Order("rating DESC").
+		Scan(&ratingCounts).Error; err != nil {
+		log.Printf("[GetUserRatings] 查询评分统计失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评分统计失败"})
+		return
 	}
 
-	averageRating := 0.0
-	if totalCount > 0 {
-		averageRating = float64(totalRating) / float64(totalCount)
+	// 格式化评分数据，确保所有评分等级都有数据
+	ratings := make([]gin.H, 5)
+	for i := uint8(1); i <= 5; i++ {
+		count := 0
+		for _, rc := range ratingCounts {
+			if rc.Rating == i {
+				count = rc.Count
+				break
+			}
+		}
+		ratings[5-i] = gin.H{"rating": i, "count": count}
+	}
+
+	// 计算总评分和平均分
+	var stats struct {
+		AvgRating float64
+		Count     int64
+	}
+
+	if err := db.DB.Model(&models.Review{}).
+		Select("COALESCE(AVG(rating), 0) as avg_rating, COUNT(*) as count").
+		Where("reviewee_id = ?", user.ID).
+		Scan(&stats).Error; err != nil {
+		log.Printf("[GetUserRatings] 计算平均评分失败: %v", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ratings":        ratings,
-		"total_reviews":  totalCount,
-		"average_rating": averageRating,
+		"success": true,
+		"ratings": ratings,
+		"stats": gin.H{
+			"total_reviews":  stats.Count,
+			"average_rating": stats.AvgRating,
+		},
 	})
 }
 
@@ -280,43 +498,24 @@ func ReportReview(c *gin.Context) {
 		return
 	}
 
-	// In a real application, we would get the user ID from the authenticated user
-	// userID := c.GetUint("userID")
+	// 检查评价是否存在
+	var review models.Review
+	if err := db.DB.Where("uuid = ?", reviewUUID).First(&review).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "评价未找到"})
+		} else {
+			log.Printf("[ReportReview] 查询评价失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取评价数据失败"})
+		}
+		return
+	}
 
-	// In a real application, we would check if the review exists
-	// var review models.Review
-	// if db.Where("uuid = ?", reviewUUID).First(&review).RecordNotFound() {
-	//   c.JSON(http.StatusNotFound, gin.H{"error": "评价不存在"})
-	//   return
-	// }
+	// 此处实际应创建举报记录
+	// 在真实环境中，应该创建一个ReviewReport模型并保存举报信息
 
-	// In a real application, we would check if the user is allowed to report this review
-	// if review.ReviewedID != userID {
-	//   c.JSON(http.StatusForbidden, gin.H{"error": "无权举报此评价"})
-	//   return
-	// }
-
-	// In a real application, we would check if the user has already reported this review
-	// var existingReport models.ReviewReport
-	// if !db.Where("review_id = ? AND reporter_id = ?", review.ID, userID).First(&existingReport).RecordNotFound() {
-	//   c.JSON(http.StatusBadRequest, gin.H{"error": "已举报此评价"})
-	//   return
-	// }
-
-	// In a real application, we would create a new report
-	// report := models.ReviewReport{
-	//   UUID:       uuid.New().String(),
-	//   ReviewID:   review.ID,
-	//   ReporterID: userID,
-	//   Reason:     req.Reason,
-	//   Status:     models.ReportStatusPending,
-	//   CreatedAt:  time.Now(),
-	//   UpdatedAt:  time.Now(),
-	// }
-	// db.Create(&report)
-
-	// Return success response
+	// 返回成功响应
 	c.JSON(http.StatusOK, gin.H{
-		"message": "举报提交成功，我们将尽快审核",
+		"success": true,
+		"message": fmt.Sprintf("评价举报提交成功，我们将尽快审核（评价ID: %s，举报原因: %s）", reviewUUID, req.Reason),
 	})
 }

@@ -145,6 +145,71 @@ func AuthRequired() gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth is a middleware that sets user info in context if authenticated, but doesn't block the request if not
+func OptionalAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Handle preflight OPTIONS request
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
+		// Get token from header or cookie
+		authHeader := c.GetHeader("Authorization")
+		var tokenString string
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+		if tokenString == "" {
+			// 尝试从 cookie 取
+			cookieToken, err := c.Cookie("auth_token")
+			if err == nil && cookieToken != "" {
+				tokenString = cookieToken
+			}
+		}
+
+		// 如果没有token，继续处理请求但不设置用户信息
+		if tokenString == "" {
+			c.Next()
+			return
+		}
+
+		// 尝试验证token
+		claims, err := validateToken(tokenString)
+		if err != nil {
+			// Token无效但不中断请求
+			c.Next()
+			return
+		}
+
+		// 查找用户
+		var user models.User
+		if result := db.DB.First(&user, claims.UserID); result.Error != nil {
+			// 用户不存在但不中断请求
+			c.Next()
+			return
+		}
+
+		// 检查是否被软删除
+		if !user.DeletedAt.Time.IsZero() {
+			// 账户已停用但不中断请求
+			c.Next()
+			return
+		}
+
+		// 设置用户信息到上下文
+		c.Set("user", &user)
+		c.Set("userID", claims.UserID)
+		c.Set("user_uuid", claims.UUID)
+		c.Set("user_type", claims.UserType)
+
+		c.Next()
+	}
+}
+
 // AdminRequired is a middleware that checks if user is an admin
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {

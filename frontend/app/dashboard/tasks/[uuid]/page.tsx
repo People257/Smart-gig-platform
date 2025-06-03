@@ -51,9 +51,20 @@ export default function TaskDetailPage() {
   const fetchTaskDetails = async () => {
     setLoading(true)
     try {
+      console.log("开始获取任务详情")
       const res = await tasksApi.getTaskByUUID(uuid)
+      console.log("获取任务详情响应:", res)
       if (res.success && res.data && res.data.task) {
+        console.log("获取到任务详情:", {
+          uuid: res.data.task.uuid,
+          status: res.data.task.status,
+          is_worker: res.data.task.is_worker,
+          is_applicant: res.data.task.is_applicant,
+          user: user?.user_type, 
+          user_id: user?.id
+        })
         setTask(res.data.task)
+        console.log("设置任务状态后:", res.data.task)
       } else {
         toast.error(res.error || "未找到该任务")
         router.replace("/dashboard/tasks")
@@ -72,14 +83,35 @@ export default function TaskDetailPage() {
     }
   }, [uuid, router])
 
+  // 添加状态变化监听器，用于调试
+  useEffect(() => {
+    if (task) {
+      console.log("任务状态更新:", {
+        uuid: task.uuid,
+        title: task.title,
+        status: task.status,
+        is_worker: task.is_worker,
+        is_applicant: task.is_applicant,
+        user_type: user?.user_type,
+        show_complete_button: (task.is_worker || task.status === "in_progress") && task.status === "in_progress"
+      })
+    }
+  }, [task])
+
   const handleApply = async () => {
     if (!task) return
     setApplying(true)
     try {
+      console.log("申请前状态:", { is_applicant: task.is_applicant })
       const res = await tasksApi.applyToTask(task.uuid, { cover_letter: "" })
+      console.log("申请返回结果:", res)
       if (res.success) {
         toast.success("申请成功")
-        fetchTaskDetails() // 重新加载任务详情
+        await fetchTaskDetails() // 重新加载任务详情
+        console.log("申请后重新加载状态:", { 
+          is_applicant: task.is_applicant,
+          task_status: task.status
+        })
       } else {
         // 检查是否需要实名认证
         if (res.data && res.data.require_verification) {
@@ -159,13 +191,19 @@ export default function TaskDetailPage() {
   const renderActionButton = () => {
     if (!user) return null
     
+    console.log("渲染操作按钮:", {
+      user_type: user.user_type, 
+      is_worker: task.is_worker,
+      is_applicant: task.is_applicant,
+      task_status: task.status,
+      employer_match: user.user_type === "employer" && task.employer?.uuid === user.uuid
+    })
+    
     if (user.user_type === "worker") {
       // 工人视角
-      if (task.is_applicant) {
-        // 已申请
-        return <Button disabled>已申请</Button>
-      } else if (task.is_worker && task.status === "in_progress") {
-        // 是任务执行者且任务进行中
+      // 先判断是否是任务执行者且任务进行中
+      if ((task.is_worker || task.status === "in_progress") && task.status === "in_progress") {
+        // 是任务执行者且任务进行中，或者任务进行中但is_worker字段可能不准确，强制显示完成按钮
         return (
           <Button onClick={handleComplete} disabled={completing}>
             {completing ? "处理中..." : "完成任务"}
@@ -174,6 +212,9 @@ export default function TaskDetailPage() {
       } else if (task.is_worker && ["payment_pending", "completed"].includes(task.status)) {
         // 任务已完成或支付中
         return <Button disabled>{task.status === "completed" ? "任务已完成" : "等待付款"}</Button>
+      } else if (task.is_applicant) {
+        // 已申请但未被接受
+        return <Button disabled>已申请</Button>
       } else if (task.status === "recruiting") {
         // 未申请且招募中
         return (
@@ -277,6 +318,12 @@ export default function TaskDetailPage() {
             <Badge variant={getBadgeVariantForStatus(task.status)}>
               {formatTaskStatus(task.status)}
             </Badge>
+            {task.is_worker && task.status === "in_progress" && (
+              <span className="ml-2 text-sm text-green-600">您是此任务的执行者，可以点击"完成任务"提交工作</span>
+            )}
+            {task.is_applicant && task.status === "recruiting" && (
+              <span className="ml-2 text-sm text-gray-600">您已申请此任务，等待雇主审核</span>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

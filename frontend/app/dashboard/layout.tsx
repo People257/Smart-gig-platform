@@ -1,11 +1,16 @@
 "use client"
 
 import React, { ReactNode, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { redirect, useRouter } from "next/navigation"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { TopBar } from "@/components/dashboard/topbar"
 import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Home, FileText, CreditCard, Star } from "lucide-react"
 
 interface DashboardLayoutProps {
   children: ReactNode

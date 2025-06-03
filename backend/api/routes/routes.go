@@ -53,7 +53,7 @@ func SetupRoutes(r *gin.Engine) {
 	{
 		tasks.GET("", handlers.GetTasks)
 		tasks.POST("", middlewares.AuthRequired(), middlewares.EmployerRequired(), handlers.CreateTask)
-		tasks.GET("/:uuid", handlers.GetTaskByUUID)
+		tasks.GET("/:uuid", middlewares.OptionalAuth(), handlers.GetTaskByUUID)
 		tasks.POST("/:uuid/apply", middlewares.AuthRequired(), middlewares.WorkerRequired(), handlers.ApplyToTask)
 		tasks.PUT("/:uuid/complete", middlewares.AuthRequired(), middlewares.WorkerRequired(), handlers.CompleteTask)
 		tasks.PUT("/:uuid/confirm", middlewares.AuthRequired(), middlewares.EmployerRequired(), handlers.ConfirmTaskCompletion)
@@ -78,6 +78,16 @@ func SetupRoutes(r *gin.Engine) {
 		payments.GET("", middlewares.AuthRequired(), handlers.GetPaymentsData)
 		payments.POST("/withdraw", middlewares.AuthRequired(), handlers.RequestWithdrawal)
 		payments.POST("/withdrawal-accounts", middlewares.AuthRequired(), handlers.AddWithdrawalAccount)
+	}
+
+	// Review routes
+	reviews := api.Group("/reviews")
+	{
+		reviews.GET("/user/:uuid", handlers.GetUserReviews)
+		reviews.GET("/pending", middlewares.AuthRequired(), handlers.GetPendingReviews)
+		reviews.POST("", middlewares.AuthRequired(), handlers.CreateReview)
+		reviews.GET("/ratings/:uuid", handlers.GetUserRatings)
+		reviews.POST("/report/:uuid", middlewares.AuthRequired(), handlers.ReportReview)
 	}
 
 	// Admin routes

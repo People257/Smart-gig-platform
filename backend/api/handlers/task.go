@@ -21,7 +21,7 @@ type TaskQueryParams struct {
 	Page         int    `form:"page,default=1"`
 	Limit        int    `form:"limit,default=10"`
 	SearchQuery  string `form:"search_query"`
-	StatusFilter string `form:"status_filter,default=all"`
+	StatusFilter string `form:"status,default=all"`
 	UserScope    string `form:"user_scope,default=all"`
 	Skills       string `form:"skills"`
 	LocationType string `form:"location_type"`
@@ -51,11 +51,21 @@ type TaskApplicationRequest struct {
 
 // GetTasks handles fetching a list of tasks with filtering, search, and pagination
 func GetTasks(c *gin.Context) {
+	// 添加调试日志：原始请求参数
+	log.Printf("[GetTasks] 原始请求参数: %v", c.Request.URL.Query())
+
+	// 检查status参数是否直接存在于URL中
+	statusParam := c.Query("status")
+	log.Printf("[GetTasks] 直接从URL获取的status参数: '%s'", statusParam)
+
 	var params TaskQueryParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的筛选参数", "details": err.Error()})
 		return
 	}
+
+	// 添加调试日志：打印接收到的status参数
+	log.Printf("[GetTasks] 接收到的状态参数: '%s'", params.StatusFilter)
 
 	if params.Page < 1 {
 		params.Page = 1
@@ -65,10 +75,26 @@ func GetTasks(c *gin.Context) {
 	}
 
 	var tasks []models.Task
-	query := db.DB.Model(&models.Task{}).Preload("Employer").Preload("Skills")
+	query := db.DB.Debug().Model(&models.Task{}).Preload("Employer").Preload("Skills")
 
-	if params.StatusFilter != "all" && params.StatusFilter != "" {
+	// 调试查看最终获取的任务列表
+	defer func() {
+		log.Printf("[GetTasks] 返回任务数量: %d", len(tasks))
+		for i, task := range tasks {
+			log.Printf("[GetTasks] 任务 #%d: UUID=%s, 标题=%s, 状态=%s",
+				i+1, task.UUID, task.Title, task.Status)
+		}
+	}()
+
+	// 直接使用URL中的status参数进行筛选，如果存在
+	if statusParam != "" && statusParam != "all" {
+		log.Printf("[GetTasks] 使用URL参数进行状态筛选: status = '%s'", statusParam)
+		query = query.Where("status = ?", statusParam)
+	} else if params.StatusFilter != "all" && params.StatusFilter != "" {
+		log.Printf("[GetTasks] 添加状态筛选条件: status = '%s'", params.StatusFilter)
 		query = query.Where("status = ?", params.StatusFilter)
+	} else {
+		log.Printf("[GetTasks] 不添加状态筛选")
 	}
 	if params.SearchQuery != "" {
 		like := "%" + params.SearchQuery + "%"
@@ -259,7 +285,29 @@ func GetTaskByUUID(c *gin.Context) {
 	var currentUserID uint
 	userIDValue, exists := c.Get("userID")
 	if exists {
-		currentUserID = userIDValue.(uint)
+		// 检查类型并尝试进行适当的类型转换
+		switch v := userIDValue.(type) {
+		case uint:
+			currentUserID = v
+			log.Printf("[GetTaskByUUID] userID类型是 uint: %v", currentUserID)
+		case int:
+			currentUserID = uint(v)
+			log.Printf("[GetTaskByUUID] userID类型是 int，转换为uint: %v", currentUserID)
+		case float64:
+			currentUserID = uint(v)
+			log.Printf("[GetTaskByUUID] userID类型是 float64，转换为uint: %v", currentUserID)
+		default:
+			log.Printf("[GetTaskByUUID] 未知的userID类型: %T, %v", userIDValue, userIDValue)
+			if idStr, ok := userIDValue.(string); ok {
+				var uintID uint64
+				if _, err := fmt.Sscanf(idStr, "%d", &uintID); err == nil {
+					currentUserID = uint(uintID)
+					log.Printf("[GetTaskByUUID] 从字符串解析userID: %v", currentUserID)
+				}
+			}
+		}
+	} else {
+		log.Printf("[GetTaskByUUID] 用户未登录或未获取到用户ID")
 	}
 
 	var task models.Task
@@ -267,6 +315,15 @@ func GetTaskByUUID(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "任务未找到"})
 		return
+	}
+
+	log.Printf("[GetTaskByUUID] 任务ID: %d, UUID: %s, 标题: %s, 雇主ID: %d, 申请数量: %d",
+		task.ID, task.UUID, task.Title, task.EmployerID, len(task.Applications))
+
+	// 调试输出申请信息
+	for i, app := range task.Applications {
+		log.Printf("[GetTaskByUUID] 申请 #%d: ID=%d, UUID=%s, 工人ID=%d, 工人名称=%s, 状态=%s",
+			i+1, app.ID, app.UUID, app.WorkerID, app.Worker.Name, app.Status)
 	}
 
 	// 获取当前用户的申请状态（如果是工人）
@@ -278,11 +335,32 @@ func GetTaskByUUID(c *gin.Context) {
 		// 检查是否已申请
 		if db.DB.Where("task_id = ? AND worker_id = ?", task.ID, currentUserID).First(&application).Error == nil {
 			isApplicant = true
+			log.Printf("[GetTaskByUUID] 用户 %d 已申请该任务", currentUserID)
 		}
 
 		// 检查是否是当前任务的工作者
-		if db.DB.Where("task_id = ? AND worker_id = ?", task.ID, currentUserID).First(&assignment).Error == nil {
+		log.Printf("[GetTaskByUUID] 尝试查询任务分配: task_id=%d, worker_id=%d", task.ID, currentUserID)
+
+		// 使用原生SQL查询直接检查
+		var count int64
+		err = db.DB.Raw("SELECT COUNT(*) FROM task_assignments WHERE task_id = ? AND worker_id = ?", task.ID, currentUserID).Count(&count).Error
+		if err != nil {
+			log.Printf("[GetTaskByUUID] 查询task_assignments时出错: %v", err)
+		}
+
+		log.Printf("[GetTaskByUUID] 原生SQL查询结果: count=%d", count)
+
+		if count > 0 {
 			isWorker = true
+			log.Printf("[GetTaskByUUID] 用户 %d 是该任务的工作者", currentUserID)
+		} else {
+			// 使用GORM ORM查询，确认是否能找到记录
+			if db.DB.Where("task_id = ? AND worker_id = ?", task.ID, currentUserID).First(&assignment).Error == nil {
+				isWorker = true
+				log.Printf("[GetTaskByUUID] GORM查询成功: 用户 %d 是该任务的工作者, assignment_id=%d", currentUserID, assignment.ID)
+			} else {
+				log.Printf("[GetTaskByUUID] 未找到任务分配记录")
+			}
 		}
 	}
 
@@ -296,23 +374,41 @@ func GetTaskByUUID(c *gin.Context) {
 		locationDisplay = *task.LocationDetails
 	}
 
-	// 格式化申请人信息，只有任务所有者才能看到申请人列表
+	// 始终格式化申请人信息，对于非雇主只展示基本信息
 	applicants := []gin.H{}
-	if exists && currentUserID == task.EmployerID {
-		for _, app := range task.Applications {
-			applicants = append(applicants, gin.H{
-				"uuid": app.UUID,
-				"worker": gin.H{
-					"uuid":       app.Worker.UUID,
-					"name":       app.Worker.Name,
-					"avatar_url": app.Worker.AvatarURL,
-				},
-				"status":       app.Status,
-				"applied_at":   app.AppliedAt.Format(time.RFC3339),
-				"updated_at":   app.UpdatedAt.Format(time.RFC3339),
-				"cover_letter": app.CoverLetter,
-			})
+	isEmployer := exists && currentUserID == task.EmployerID
+
+	for _, app := range task.Applications {
+		applicantInfo := gin.H{
+			"uuid": app.UUID,
+			"worker": gin.H{
+				"uuid":       app.Worker.UUID,
+				"name":       app.Worker.Name,
+				"avatar_url": app.Worker.AvatarURL,
+			},
+			"status":     app.Status,
+			"applied_at": app.AppliedAt.Format(time.RFC3339),
 		}
+
+		// 只有雇主能看到详细信息
+		if isEmployer {
+			applicantInfo["updated_at"] = app.UpdatedAt.Format(time.RFC3339)
+			if app.CoverLetter != nil {
+				applicantInfo["cover_letter"] = *app.CoverLetter
+			}
+		}
+
+		applicants = append(applicants, applicantInfo)
+	}
+
+	// 记录日志
+	if isEmployer {
+		log.Printf("[GetTaskByUUID] 用户 %d 是任务的雇主，将显示完整的申请人列表", currentUserID)
+	} else if exists {
+		log.Printf("[GetTaskByUUID] 用户 %d 不是任务的雇主（雇主ID: %d），显示简化的申请人列表",
+			currentUserID, task.EmployerID)
+	} else {
+		log.Printf("[GetTaskByUUID] 未登录用户访问，显示简化的申请人列表")
 	}
 
 	response := gin.H{
@@ -344,7 +440,7 @@ func GetTaskByUUID(c *gin.Context) {
 	// 只对特定用户添加额外字段
 	response["is_applicant"] = isApplicant
 	response["is_worker"] = isWorker
-	// 无论是否雇主都返回 applicants 字段，便于前端调试
+	// 始终返回申请人列表
 	response["applicants"] = applicants
 
 	c.JSON(http.StatusOK, gin.H{
@@ -606,17 +702,18 @@ func ConfirmTaskCompletion(c *gin.Context) {
 
 		// Create transaction for worker payment
 		paymentTransaction := models.Transaction{
-			UUID:          uuid.New().String(),
-			UserID:        uint(assignment.WorkerID),
-			Type:          models.TransactionTypeEarning,
-			Amount:        task.BudgetAmount / float64(len(assignments)), // Split payment if multiple workers
-			Currency:      task.Currency,
-			Status:        models.TransactionStatusCompleted,
-			Title:         "任务完成报酬",
-			Description:   stringPtr(fmt.Sprintf("完成任务：%s", task.Title)),
-			ReferenceID:   &task.ID,
-			ReferenceType: models.ReferenceTypeTask,
-			ReferenceUUID: &task.UUID,
+			UUID:             uuid.New().String(),
+			UserID:           uint(assignment.WorkerID),
+			TaskAssignmentID: &assignment.ID,
+			Type:             models.TransactionTypeEarning,
+			Amount:           task.BudgetAmount / float64(len(assignments)), // Split payment if multiple workers
+			Currency:         task.Currency,
+			Status:           models.TransactionStatusCompleted,
+			Title:            "任务完成报酬",
+			Description:      stringPtr(fmt.Sprintf("完成任务：%s", task.Title)),
+			ReferenceID:      &task.ID,
+			ReferenceType:    models.ReferenceTypeTask,
+			ReferenceUUID:    &task.UUID,
 		}
 
 		now := time.Now()

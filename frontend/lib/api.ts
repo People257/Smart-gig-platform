@@ -281,22 +281,15 @@ export const authApi = {
     return response;
   },
   
-  login: async (loginData: {
-    method: string;
-    username?: string;
-    password?: string;
-    phone_number?: string;
-    email?: string;
-    verification_code?: string;
-  }) => {
-    console.log("Calling login API:", loginData);
-    const response = await fetchApi<{ user: any; token: string }>("/auth/login", {
+  login: async (credentials: { username: string; password: string }) => {
+    console.log("Calling login API:", { username: credentials.username });
+    const response = await fetchApi<{ token: string }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify(loginData),
+      body: JSON.stringify(credentials),
     });
     
-    // If login is successful, save the token
-    if (response.success && response.data?.token) {
+    // 成功登录时保存token
+    if (response.success && response.data && response.data.token) {
       saveAuthToken(response.data.token);
     }
     
@@ -522,4 +515,43 @@ export const adminApi = {
     console.log("Calling getAdminDashboard API");
     return fetchApi<any>("/admin/dashboard");
   },
+};
+
+// Reviews API
+export const reviewsApi = {
+  getUserReviews: async (userUUID: string) => {
+    console.log("Calling getUserReviews API:", userUUID);
+    return fetchApi<any>(`/reviews/user/${userUUID}`);
+  },
+  
+  getPendingReviews: async () => {
+    console.log("Calling getPendingReviews API");
+    return fetchApi<any>("/reviews/pending");
+  },
+  
+  createReview: async (reviewData: {
+    rating: number;
+    comment: string;
+    task_uuid: string;
+    reviewee_uuid: string;
+  }) => {
+    console.log("Calling createReview API:", reviewData);
+    return fetchApi<any>("/reviews", {
+      method: "POST",
+      body: JSON.stringify(reviewData),
+    });
+  },
+  
+  getUserRatings: async (userUUID: string) => {
+    console.log("Calling getUserRatings API:", userUUID);
+    return fetchApi<any>(`/reviews/ratings/${userUUID}`);
+  },
+  
+  reportReview: async (reviewUUID: string, reason: string) => {
+    console.log("Calling reportReview API:", { reviewUUID, reason });
+    return fetchApi<any>(`/reviews/report/${reviewUUID}`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
 }; 

@@ -100,7 +100,7 @@ export default function TasksPage() {
   }
 
   const filteredTasks = tasks.filter((task) => {
-    // Apply search filter
+    // 只对搜索查询进行客户端筛选
     if (searchQuery === "") return true;
     
     return (
@@ -109,6 +109,13 @@ export default function TasksPage() {
       task.skills?.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   })
+
+  // 添加调试代码
+  useEffect(() => {
+    console.log("Status filter:", statusFilter);
+    console.log("Raw tasks from API:", tasks);
+    console.log("Filtered tasks:", filteredTasks);
+  }, [statusFilter, tasks, filteredTasks]);
 
   return (
     <div className="space-y-6">

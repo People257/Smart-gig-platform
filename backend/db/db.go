@@ -131,9 +131,18 @@ func migrateDB() {
 		&models.InvalidatedToken{},
 		&models.Task{},
 		&models.TaskApplication{},
+		&models.TaskAssignment{},
+		&models.Transaction{},
+		&models.WithdrawalAccount{},
 		&models.Skill{},
 		&models.Review{},
+		&models.UserPortfolio{},
+		&models.ActivityLog{},
+		&models.UserFavorite{},
 	)
+
+	// 初始化模型间的关系
+	models.InitModels(DB)
 }
 
 // getEnv 从环境变量读取配置，如果不存在则使用默认值

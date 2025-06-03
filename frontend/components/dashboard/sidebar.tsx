@@ -16,6 +16,7 @@ import {
   MenuIcon,
   XIcon,
 } from "@/components/ui/icons"
+import { Star } from "lucide-react"
 
 // 侧边栏导航项接口
 interface NavItem {
@@ -57,6 +58,11 @@ export function Sidebar() {
       href: "/dashboard/payments",
       label: "财务管理",
       icon: <DollarSignIcon className="h-5 w-5" />,
+    },
+    {
+      href: "/dashboard/reviews",
+      label: "我的评价",
+      icon: <Star className="h-5 w-5" />,
     },
     {
       href: "/dashboard/settings",
