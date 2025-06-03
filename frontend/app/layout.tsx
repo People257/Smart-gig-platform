@@ -1,17 +1,24 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'sonner'
-import dynamic from 'next/dynamic'
-
-// Use dynamic import with SSR disabled for AuthProvider to prevent chunk loading issues
-const AuthProvider = dynamic(() => import('@/lib/auth-context').then(mod => mod.AuthProvider), { 
-  ssr: false 
-})
+import { ClientAuthProvider } from '@/lib/client-auth-provider'
 
 export const metadata: Metadata = {
   title: 'ZHLG Platform',
   description: 'A platform for connecting workers with employers',
   generator: 'v0.dev',
+}
+
+function LoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-col items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mb-4"></div>
+        <p>页面加载中...</p>
+      </div>
+    </div>
+  )
 }
 
 export default function RootLayout({
@@ -22,10 +29,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>
-          {children}
-          <Toaster position="top-right" />
-        </AuthProvider>
+        <Suspense fallback={<LoadingFallback />}>
+          <ClientAuthProvider>
+            <Suspense fallback={<LoadingFallback />}>
+              {children}
+            </Suspense>
+            <Toaster position="top-right" />
+          </ClientAuthProvider>
+        </Suspense>
       </body>
     </html>
   )

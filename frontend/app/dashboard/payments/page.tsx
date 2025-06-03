@@ -190,18 +190,17 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">支付结算</h1>
+    <div className="space-y-4 sm:space-y-6 pb-8">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">支付结算</h1>
         <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
           <DialogTrigger asChild>
-        <Button onClick={handleWithdraw}>
-          <Wallet className="mr-2 h-4 w-4" />
-          <span className="hidden sm:inline">申请提现</span>
-          <span className="sm:hidden">提现</span>
-        </Button>
+            <Button onClick={handleWithdraw} className="w-full sm:w-auto">
+              <Wallet className="mr-2 h-4 w-4" />
+              <span>申请提现</span>
+            </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>申请提现</DialogTitle>
               <DialogDescription>请输入支付宝账号和提现金额</DialogDescription>
@@ -234,10 +233,10 @@ export default function PaymentsPage() {
                     </FormItem>
                   )}
                 />
-                <DialogFooter>
-                  <Button type="submit">提交申请</Button>
+                <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+                  <Button type="submit" className="w-full sm:w-auto">提交申请</Button>
                   <DialogClose asChild>
-                    <Button type="button" variant="outline">取消</Button>
+                    <Button type="button" variant="outline" className="w-full sm:w-auto">取消</Button>
                   </DialogClose>
                 </DialogFooter>
               </form>
@@ -246,7 +245,7 @@ export default function PaymentsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">账户余额</CardTitle>
@@ -257,7 +256,7 @@ export default function PaymentsPage() {
               <Skeleton className="h-8 w-24" />
             ) : (
               <>
-                <div className="text-2xl font-bold">¥{paymentData.balance?.toLocaleString() || '0'}</div>
+                <div className="text-xl sm:text-2xl font-bold">¥{paymentData.balance?.toLocaleString() || '0'}</div>
                 <p className="text-xs text-muted-foreground">可提现金额</p>
               </>
             )}
@@ -273,7 +272,7 @@ export default function PaymentsPage() {
               <Skeleton className="h-8 w-24" />
             ) : (
               <>
-                <div className="text-2xl font-bold text-green-500">
+                <div className="text-xl sm:text-2xl font-bold text-green-500">
                   ¥{paymentData.totalIncome?.toLocaleString() || '0'}
                 </div>
                 <p className="text-xs text-muted-foreground">已完成交易</p>
@@ -291,7 +290,7 @@ export default function PaymentsPage() {
               <Skeleton className="h-8 w-24" />
             ) : (
               <>
-                <div className="text-2xl font-bold text-red-500">
+                <div className="text-xl sm:text-2xl font-bold text-red-500">
                   ¥{paymentData.totalExpense?.toLocaleString() || '0'}
                 </div>
                 <p className="text-xs text-muted-foreground">提现金额</p>
@@ -301,52 +300,51 @@ export default function PaymentsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>交易记录</CardTitle>
           <CardDescription>查看您的收支明细</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="all">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-              <TabsList className="w-full sm:w-auto">
-                <TabsTrigger value="all" className="flex-1 sm:flex-none">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+              <TabsList className="w-full md:w-auto grid grid-cols-3 md:flex">
+                <TabsTrigger value="all" className="text-xs sm:text-sm">
                   全部
                 </TabsTrigger>
-                <TabsTrigger value="income" className="flex-1 sm:flex-none">
+                <TabsTrigger value="income" className="text-xs sm:text-sm">
                   收入
                 </TabsTrigger>
-                <TabsTrigger value="expense" className="flex-1 sm:flex-none">
+                <TabsTrigger value="expense" className="text-xs sm:text-sm">
                   支出
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="search"
                     placeholder="搜索交易..."
-                    className="pl-8"
+                    className="pl-8 w-full"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger className="w-[130px]">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder="时间范围" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部时间</SelectItem>
-                    <SelectItem value="today">今天</SelectItem>
-                    <SelectItem value="week">最近7天</SelectItem>
-                    <SelectItem value="month">最近30天</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="icon">
-                  <Download className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-2">
+                  <Select value={dateFilter} onValueChange={setDateFilter}>
+                    <SelectTrigger className="w-full sm:w-[130px]">
+                      <Calendar className="mr-2 h-4 w-4" />
+                      <SelectValue placeholder="时间范围" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部时间</SelectItem>
+                      <SelectItem value="today">今天</SelectItem>
+                      <SelectItem value="week">最近7天</SelectItem>
+                      <SelectItem value="month">最近30天</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -370,7 +368,8 @@ export default function PaymentsPage() {
   function renderTransactionsTable(transactions: Transaction[]) {
     return (
       <div className="rounded-md border">
-        <div className="grid grid-cols-5 p-4 text-sm font-medium border-b">
+        {/* 桌面版表头 */}
+        <div className="hidden sm:grid sm:grid-cols-5 p-4 text-sm font-medium border-b">
           <div>交易编号</div>
           <div>日期</div>
           <div className="col-span-2">描述</div>
@@ -381,10 +380,10 @@ export default function PaymentsPage() {
             {Array(4)
               .fill(0)
               .map((_, i) => (
-                <div key={i} className="grid grid-cols-5 p-4 text-sm">
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-5 p-4 text-sm gap-2">
                   <Skeleton className="h-4 w-20" />
                   <Skeleton className="h-4 w-20" />
-                  <div className="col-span-2">
+                  <div className="col-span-1 sm:col-span-2">
                     <Skeleton className="h-4 w-full" />
                   </div>
                   <div className="text-right">
@@ -396,12 +395,34 @@ export default function PaymentsPage() {
         ) : transactions.length > 0 ? (
           <div className="divide-y">
             {transactions.map((transaction) => (
-              <div key={transaction.id} className="grid grid-cols-5 p-4 text-sm">
-                <div className="text-muted-foreground">{transaction.id}</div>
-                <div>{transaction.date}</div>
-                <div className="col-span-2">{transaction.description}</div>
+              <div key={transaction.id} className="flex flex-col sm:grid sm:grid-cols-5 p-4 text-sm">
+                {/* 移动端标题行 */}
+                <div className="flex justify-between items-center mb-2 sm:hidden">
+                  <div className="font-medium">{transaction.description}</div>
+                  <div
+                    className={`font-medium ${
+                      transaction.type === "income" ? "text-green-500" : "text-red-500"
+                    }`}
+                  >
+                    {transaction.type === "income" ? "+" : "-"}¥{transaction.amount.toLocaleString()}
+                    {transaction.status === "pending" && (
+                      <span className="ml-2 text-xs text-muted-foreground">(处理中)</span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* 移动端日期和ID */}
+                <div className="flex justify-between text-xs text-muted-foreground mt-1 sm:hidden">
+                  <div>{transaction.date}</div>
+                  <div>{transaction.id}</div>
+                </div>
+                
+                {/* 桌面版完整布局 */}
+                <div className="hidden sm:block text-muted-foreground">{transaction.id}</div>
+                <div className="hidden sm:block">{transaction.date}</div>
+                <div className="hidden sm:block sm:col-span-2">{transaction.description}</div>
                 <div
-                  className={`text-right font-medium ${
+                  className={`hidden sm:block text-right font-medium ${
                     transaction.type === "income" ? "text-green-500" : "text-red-500"
                   }`}
                 >
