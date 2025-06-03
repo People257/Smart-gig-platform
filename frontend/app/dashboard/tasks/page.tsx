@@ -58,6 +58,23 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [activeTab, setActiveTab] = useState("all")
   const [myTaskApplications, setMyTaskApplications] = useState<TaskApplication[]>([])
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Check for mobile view
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 640)
+    }
+    
+    // Initial check
+    checkIfMobile()
+    
+    // Listen for resize events
+    window.addEventListener('resize', checkIfMobile)
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkIfMobile)
+  }, [])
 
   useEffect(() => {
     fetchTasks()
@@ -152,10 +169,10 @@ export default function TasksPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">任务管理</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">任务管理</h1>
         {user?.user_type === "employer" && (
         <Link href="/dashboard/tasks/create">
-          <Button>
+          <Button size={isMobile ? "sm" : "default"}>
             <Plus className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">发布任务</span>
             <span className="sm:hidden">发布</span>
@@ -164,16 +181,16 @@ export default function TasksPage() {
         )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="all" className="flex-1 sm:flex-none">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+          <TabsList className="w-full sm:w-auto grid grid-cols-3 h-auto">
+            <TabsTrigger value="all" className="px-3 py-1.5">
               全部任务
             </TabsTrigger>
-            <TabsTrigger value="my" className="flex-1 sm:flex-none">
+            <TabsTrigger value="my" className="px-3 py-1.5">
               我的任务
             </TabsTrigger>
-            <TabsTrigger value="favorite" className="flex-1 sm:flex-none">
+            <TabsTrigger value="favorite" className="px-3 py-1.5">
               收藏任务
             </TabsTrigger>
           </TabsList>
@@ -189,7 +206,7 @@ export default function TasksPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" className="shrink-0">
               <Filter className="h-4 w-4" />
             </Button>
           </div>
@@ -197,7 +214,7 @@ export default function TasksPage() {
 
         <div className="flex items-center gap-4 mb-6">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className={isMobile ? "w-full" : "w-[180px]"}>
               <SelectValue placeholder="任务状态" />
             </SelectTrigger>
             <SelectContent>
@@ -210,13 +227,13 @@ export default function TasksPage() {
           </Select>
         </div>
 
-        <TabsContent value="all" className="space-y-4">
+        <TabsContent value="all" className="space-y-4 mt-0">
           {renderTaskList()}
         </TabsContent>
-        <TabsContent value="my" className="space-y-4">
+        <TabsContent value="my" className="space-y-4 mt-0">
           {renderTaskList()}
         </TabsContent>
-        <TabsContent value="favorite" className="space-y-4">
+        <TabsContent value="favorite" className="space-y-4 mt-0">
           {renderTaskList()}
         </TabsContent>
       </Tabs>
@@ -248,12 +265,6 @@ export default function TasksPage() {
                 <div className="flex flex-wrap gap-x-6 gap-y-2">
                   <Skeleton className="h-4 w-24" />
                   <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-16" />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Skeleton className="h-9 w-20" />
-                  <Skeleton className="h-9 w-20" />
                 </div>
               </div>
             </CardContent>
@@ -263,31 +274,24 @@ export default function TasksPage() {
     
     if (filteredTasks.length === 0) {
       return (
-        <div className="text-center py-10">
-          <p className="text-muted-foreground">暂无任务数据</p>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">没有找到匹配的任务</p>
         </div>
       )
     }
     
     return filteredTasks.map((task) => (
-      <Card key={task.id || task.uuid}>
+      <Card key={task.uuid || task.id}>
         <CardHeader className="pb-2">
-          <div className="flex justify-between items-start">
-            <CardTitle className="text-lg">{task.title}</CardTitle>
-            {getStatusBadge(task.status || "")}
-          </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2 text-sm text-muted-foreground">
-            <div className="flex items-center">
-              <span className="font-medium">雇主：</span>
-              <span>{task.employer?.name || '未知'}</span>
-            </div>
-            <div className="flex items-center">
-              <span className="font-medium">预算：</span>
-              <span>{task.budget_display || '未设置'}</span>
-            </div>
-            <div className="flex items-center">
-              <span className="font-medium">创建时间：</span>
-              <span>{task.created_at ? (typeof task.created_at === 'string' ? task.created_at.split('T')[0] : task.created_at) : '未知'}</span>
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+            <CardTitle className="text-lg sm:text-xl text-ellipsis line-clamp-1 break-all">
+              <Link href={`/dashboard/tasks/${task.uuid}`}>{task.title}</Link>
+            </CardTitle>
+            <div className="flex flex-wrap gap-2">
+              {getStatusBadge(task.status || "")}
+              {task.application_status && (
+                <Badge variant="outline" className="ml-2">申请状态: {task.application_status}</Badge>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -295,34 +299,45 @@ export default function TasksPage() {
           <div className="grid gap-4">
             <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
             <div className="flex flex-wrap gap-2">
-              {(task.skills || []).map((skill, index) => (
-                <Badge key={index} variant="secondary">
-                  {skill}
-                </Badge>
+              {task.skills?.map((skill, index) => (
+                <Badge variant="secondary" key={index}>{skill}</Badge>
               ))}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-              <div className="flex items-center">
-                <MapPin className="mr-1 h-3.5 w-3.5" />
-                <span>{task.location || "线上"}</span>
-              </div>
-              <div className="flex items-center">
-                <Calendar className="mr-1 h-3.5 w-3.5" />
-                <span>
-                  {task.start_date || task.startDate || "未设置"} 至 {task.end_date || task.endDate || "未设置"}
-                </span>
-              </div>
-              <div className="flex items-center">
-                <Users className="mr-1 h-3.5 w-3.5" />
-                <span>{task.applicants_count || task.applicants || 0}人申请</span>
-              </div>
+              {task.employer?.name && (
+                <div className="flex items-center">
+                  <Users className="mr-1 h-4 w-4" />
+                  <span>{task.employer.name}</span>
+                </div>
+              )}
+              {task.location && (
+                <div className="flex items-center">
+                  <MapPin className="mr-1 h-4 w-4" />
+                  <span>{task.location}</span>
+                </div>
+              )}
+              {(task.start_date || task.startDate) && (
+                <div className="flex items-center">
+                  <Calendar className="mr-1 h-4 w-4" />
+                  <span>{task.start_date || task.startDate}</span>
+                </div>
+              )}
+              {task.budget_display && (
+                <div className="flex items-center">
+                  <Clock className="mr-1 h-4 w-4" />
+                  <span>{task.budget_display}</span>
+                </div>
+              )}
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end mt-2">
               <Link href={`/dashboard/tasks/${task.uuid}`}>
-                <Button variant="outline">查看详情</Button>
+                <Button variant="outline" size={isMobile ? "sm" : "default"}>查看详情</Button>
               </Link>
-              {task.status === "recruiting" && !task.is_creator && !task.is_applicant && (
-                <Button onClick={() => handleApplyTask(task.id || task.uuid)}>申请任务</Button>
+              {task.is_creator && task.status === "recruiting" && (
+                <Button variant="outline" size={isMobile ? "sm" : "default"}>查看申请</Button>
+              )}
+              {!task.is_creator && !task.is_applicant && task.status === "recruiting" && (
+                <Button onClick={() => handleApplyTask(task.uuid)} size={isMobile ? "sm" : "default"}>申请任务</Button>
               )}
             </div>
           </div>
@@ -332,23 +347,14 @@ export default function TasksPage() {
   }
   
   async function handleApplyTask(taskId: string | undefined) {
-    if (!taskId) {
-      toast.error("任务ID无效，无法申请");
-      return;
-    }
+    if (!taskId) return;
     
     try {
-      const { success, message, error } = await tasksApi.applyToTask(taskId, {});
-      
-      if (success) {
-        toast.success(message || "申请成功，请等待雇主审核");
-        fetchTasks(); // 刷新任务列表
-      } else {
-        toast.error(error || "申请失败，请稍后重试");
-      }
-    } catch (error) {
+      // 跳转到申请页面
+      window.location.href = `/dashboard/tasks/${taskId}/apply`;
+    } catch (error: any) {
       console.error("申请任务失败:", error);
-      toast.error("申请失败，请稍后重试");
+      toast.error(error.message || "申请任务失败，请稍后重试");
     }
   }
 }

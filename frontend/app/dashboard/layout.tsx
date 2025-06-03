@@ -21,8 +21,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const [isRendering, setIsRendering] = useState(true)
   const [retryCount, setRetryCount] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
   const MAX_RETRIES = 3
 
+  // Check for mobile view
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    // Initial check
+    checkIfMobile()
+    
+    // Listen for resize events
+    window.addEventListener('resize', checkIfMobile)
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkIfMobile)
+  }, [])
+  
   useEffect(() => {
     // 仅在加载完成后判断认证状态
     if (!isLoading) {
@@ -80,7 +97,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex-1 flex flex-col">
         <TopBar />
         
-        <main className="flex-1 p-6">
+        <main className={`flex-1 p-6 ${isMobile ? 'pb-24' : ''}`}>
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
