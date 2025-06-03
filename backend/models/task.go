@@ -56,6 +56,7 @@ type Task struct {
 	BudgetAmount    float64      `gorm:"type:decimal(12,2);not null" json:"budget_amount"`
 	Currency        string       `gorm:"type:varchar(3);not null;default:'CNY'" json:"currency"`
 	Headcount       uint         `gorm:"type:int unsigned;not null;default:1" json:"headcount"`
+	EstimatedHours  float64      `gorm:"type:decimal(8,2);default:0" json:"estimated_hours"`
 	Status          TaskStatus   `gorm:"type:enum('pending_approval','recruiting','in_progress','payment_pending','completed','closed','rejected');not null;default:'pending_approval';index" json:"status"`
 	IsPublic        bool         `gorm:"not null;default:true;index" json:"is_public"`
 	IsUrgent        bool         `gorm:"not null;default:false;index" json:"is_urgent"`

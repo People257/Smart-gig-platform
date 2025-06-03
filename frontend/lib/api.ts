@@ -34,10 +34,8 @@ const setCookie = (name: string, value: string, days: number): void => {
   date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
   const expires = `expires=${date.toUTCString()}`;
 
-  // 使用更强健的cookie设置，确保跨站场景下可正常工作
-  // 不设置域名，让浏览器自动使用当前域
-  // SameSite=Lax 比 Strict 更宽松，允许从外部链接跳转时携带Cookie
-  document.cookie = `${name}=${value};${expires};path=/;SameSite=Lax;Secure`;
+  // 移除SameSite和Secure设置，使Cookie在开发环境可靠工作
+  document.cookie = `${name}=${value};${expires};path=/`;
   console.log(`Cookie set: ${name} with expiry ${date.toUTCString()}`);
 };
 
@@ -58,8 +56,8 @@ const getCookie = (name: string): string | null => {
 
 const deleteCookie = (name: string): void => {
   if (typeof window === 'undefined') return;
-  // 确保使用相同的path和SameSite设置，否则可能删除失败
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax;Secure`;
+  // 确保使用相同的path设置，不使用SameSite和Secure
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   console.log(`Cookie deleted: ${name}`);
 };
 

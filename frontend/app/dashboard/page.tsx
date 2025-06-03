@@ -126,7 +126,9 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">本月收入</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {user?.user_type === "worker" ? "本月收入" : "本月支出"}
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -136,7 +138,9 @@ export default function DashboardPage() {
               <>
                 <div className="text-2xl font-bold">¥{dashboardData.monthlyIncome || 0}</div>
                 <p className="text-xs text-muted-foreground">
-                  {dashboardData.monthlyIncome ? "本月已结算收入" : "暂无收入记录"}
+                  {user?.user_type === "worker" 
+                    ? (dashboardData.monthlyIncome ? "本月已结算收入" : "暂无收入记录")
+                    : (dashboardData.monthlyIncome ? "本月已结算支出" : "暂无支出记录")}
                 </p>
               </>
             )}
@@ -144,7 +148,9 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">工作时长</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {user?.user_type === "worker" ? "工作时长" : "项目总时长"}
+            </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -154,7 +160,9 @@ export default function DashboardPage() {
               <>
                 <div className="text-2xl font-bold">{dashboardData.workHours || 0}小时</div>
                 <p className="text-xs text-muted-foreground">
-                  {dashboardData.workHours ? "总计工作时间" : "暂无工作记录"}
+                  {user?.user_type === "worker"
+                    ? (dashboardData.workHours ? "累计工作时间" : "暂无工作记录")
+                    : (dashboardData.workHours ? "项目总计时间" : "暂无项目记录")}
                 </p>
               </>
             )}
@@ -172,7 +180,9 @@ export default function DashboardPage() {
               <>
                 <div className="text-2xl font-bold">{dashboardData.rating || "--"}</div>
                 <p className="text-xs text-muted-foreground">
-                  {dashboardData.rating ? "雇主评分" : "暂无评价"}
+                  {dashboardData.rating 
+                    ? (user?.user_type === "worker" ? "客户评分" : "雇主评分")
+                    : "暂无评价"}
                 </p>
               </>
             )}
@@ -191,9 +201,15 @@ export default function DashboardPage() {
         </TabsList>
         <TabsContent value="tasks" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>最近任务</CardTitle>
-              <CardDescription>查看您最近参与的任务</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>最近任务</CardTitle>
+                <CardDescription>查看您最近参与的任务</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={fetchDashboardData} className="hidden sm:flex">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                刷新
+              </Button>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -254,20 +270,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
-
-              <div className="mt-4 flex justify-center">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    setIsLoading(true);
-                    fetchDashboardData();
-                  }}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  刷新数据
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

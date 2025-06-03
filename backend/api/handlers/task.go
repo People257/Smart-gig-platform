@@ -38,6 +38,7 @@ type CreateTaskRequest struct {
 	EndDate         string   `json:"end_date" binding:"required"`
 	PaymentType     string   `json:"payment_type" binding:"required,oneof=hourly daily fixed"`
 	BudgetAmount    float64  `json:"budget_amount" binding:"required,gt=0"`
+	EstimatedHours  float64  `json:"estimated_hours" binding:"min=0"`
 	Headcount       int      `json:"headcount" binding:"required,gt=0"`
 	Skills          []string `json:"skills" binding:"required"`
 	IsPublic        bool     `json:"is_public"`
@@ -213,19 +214,20 @@ func CreateTask(c *gin.Context) {
 		paymentType = models.PaymentTypeFixed
 	}
 	task := models.Task{
-		UUID:         uuid.New().String(),
-		EmployerID:   user.ID,
-		Title:        req.Title,
-		Description:  req.Description,
-		LocationType: locationType,
-		StartDate:    startDate,
-		EndDate:      endDate,
-		PaymentType:  paymentType,
-		BudgetAmount: req.BudgetAmount,
-		Headcount:    uint(req.Headcount),
-		Status:       models.TaskStatusRecruiting,
-		IsPublic:     req.IsPublic,
-		IsUrgent:     req.IsUrgent,
+		UUID:           uuid.New().String(),
+		EmployerID:     user.ID,
+		Title:          req.Title,
+		Description:    req.Description,
+		LocationType:   locationType,
+		StartDate:      startDate,
+		EndDate:        endDate,
+		PaymentType:    paymentType,
+		BudgetAmount:   req.BudgetAmount,
+		EstimatedHours: req.EstimatedHours,
+		Headcount:      uint(req.Headcount),
+		Status:         models.TaskStatusRecruiting,
+		IsPublic:       req.IsPublic,
+		IsUrgent:       req.IsUrgent,
 	}
 	if locationType == models.LocationTypeOffline && req.LocationDetails != "" {
 		task.LocationDetails = &req.LocationDetails

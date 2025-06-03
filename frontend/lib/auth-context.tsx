@@ -82,35 +82,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(normalizedUser);
               } else {
                 console.error("User data missing required fields:", response.data.user);
-                toast.error("用户数据缺少必要信息，请重新登录");
-                removeAuthToken();
-                setIsLoading(false);
-                return;
+                // 尽量保持登录状态，简单使用原始数据
+                setUser(response.data.user as User);
               }
             } catch (parseError) {
               console.error("Error parsing user data:", parseError, response.data.user);
-              // 不要立即退出登录，让用户可以尝试刷新页面
-              toast.error("解析用户数据出错，请刷新页面重试");
+              // 使用原始用户数据
+              setUser(response.data.user as User);
             }
           } else {
             console.log("User profile not found, but keeping token");
-            // 不立即删除token，因为可能是临时网络问题
-            toast.error("无法加载用户资料，请稍后重试");
+            // 不提示错误，静默处理
           }
         } catch (profileError: any) {
           console.error("Profile fetch error:", profileError);
           
-          // 只在特定情况下才删除token
-          if (profileError.status === 401 || 
-              profileError.message?.toLowerCase().includes('unauthorized') || 
-              profileError.message?.toLowerCase().includes('invalid token')) {
+          // 只在明确的401错误时才删除token
+          if (profileError.status === 401) {
             console.log("Token invalid, removing it");
             removeAuthToken();
-            toast.error("登录已过期，请重新登录");
+            // 不显示toast提示，避免用户体验不佳
           } else {
             console.log("Network or server error, keeping token and user state");
             // 临时网络问题或服务器错误，不删除token
-            toast.error("网络连接问题，请稍后重试");
           }
         }
       } catch (error: any) {
