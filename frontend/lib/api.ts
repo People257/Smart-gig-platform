@@ -328,33 +328,7 @@ export const authApi = {
 export const userApi = {
   getProfile: async () => {
     console.log("Calling getProfile API");
-    try {
-      const response = await fetchApi<{ user: any }>("/users/profile");
-      
-      // If the response doesn't have a user property but has data, restructure it
-      if (response.success && response.data && !response.data.user && Object.keys(response.data).length > 0) {
-        // Check if this looks like user data (has common user fields)
-        const hasUserFields = [
-          'uuid', 'username', 'name', 'email', 'phone_number', 'user_type', 'avatar_url'
-        ].some(field => field in response.data);
-        
-        if (hasUserFields) {
-          console.log("Restructuring user data response");
-          return {
-            ...response,
-            data: { user: response.data }
-          };
-        }
-      }
-      
-      return response;
-    } catch (error) {
-      console.error("Error in getProfile:", error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : "获取用户资料时出错" 
-      };
-    }
+    return fetchApi<{ user: any }>("/users/profile");
   },
   
   updateProfile: async (profileData: any) => {
@@ -372,6 +346,11 @@ export const userApi = {
       body: formData,
       headers: {}, // Let the browser set the content type with boundary for FormData
     });
+  },
+  
+  getMyTasks: async () => {
+    console.log("Calling getMyTasks API");
+    return fetchApi<{ applications: any[] }>("/users/my-tasks");
   },
   
   updateUserSettings: async (settingsData: {

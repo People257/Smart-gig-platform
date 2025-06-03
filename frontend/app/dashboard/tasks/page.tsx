@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Clock, Filter, MapPin, Plus, Search, Users } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { tasksApi } from "@/lib/api"
+import { tasksApi, userApi } from "@/lib/api"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 
@@ -18,9 +18,9 @@ import { useAuth } from "@/lib/auth-context"
 interface Task {
   id?: string;
   uuid?: string;
-  title: string;
-  description: string;
-  status: string;
+  title?: string;
+  description?: string;
+  status?: string;
   skills?: string[];
   location?: string;
   start_date?: string;
@@ -36,6 +36,18 @@ interface Task {
   employer?: { name: string };
   budget_display?: string;
   created_at?: string;
+  application_status?: string;
+  application_uuid?: string;
+}
+
+// Define TaskApplication interface
+interface TaskApplication {
+  application_id?: number;
+  application_uuid?: string;
+  status?: string;
+  applied_at?: string;
+  cover_letter?: string;
+  task?: Task;
 }
 
 export default function TasksPage() {
@@ -45,6 +57,7 @@ export default function TasksPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [tasks, setTasks] = useState<Task[]>([])
   const [activeTab, setActiveTab] = useState("all")
+  const [myTaskApplications, setMyTaskApplications] = useState<TaskApplication[]>([])
 
   useEffect(() => {
     fetchTasks()
@@ -54,26 +67,45 @@ export default function TasksPage() {
     try {
       setIsLoading(true)
       
-      // Build query parameters based on filters
-      const params: Record<string, string> = {}
-      
-      if (statusFilter !== "all") {
-        params.status = statusFilter
-      }
-      
       if (activeTab === "my" && user) {
-        params.user_id = user.uuid
-      } else if (activeTab === "favorite" && user) {
-        params.favorite = "true"
-      }
-      
-      const { success, data, error } = await tasksApi.getTasks(params)
-      
-      if (success && data) {
-        setTasks(data.tasks || [])
+        // 获取"我的任务"（我申请的任务）
+        const { success, data, error } = await userApi.getMyTasks()
+        if (success && data && data.applications) {
+          setMyTaskApplications(data.applications)
+          // 从应用中提取任务信息
+          const myTasks = data.applications
+            .filter((app: TaskApplication) => statusFilter === "all" || app.task?.status === statusFilter)
+            .map((app: TaskApplication) => ({
+              ...app.task,
+              application_status: app.status,
+              application_uuid: app.application_uuid
+            }))
+          setTasks(myTasks)
+        } else {
+          toast.error("获取我的任务失败: " + error)
+          setTasks([])
+        }
       } else {
-        toast.error("获取任务列表失败: " + error)
-        setTasks([])
+        // 获取普通任务列表（所有任务或收藏任务）
+        // Build query parameters based on filters
+        const params: Record<string, string> = {}
+        
+        if (statusFilter !== "all") {
+          params.status = statusFilter
+        }
+        
+        if (activeTab === "favorite" && user) {
+          params.favorite = "true"
+        }
+        
+        const { success, data, error } = await tasksApi.getTasks(params)
+        
+        if (success && data) {
+          setTasks(data.tasks || [])
+        } else {
+          toast.error("获取任务列表失败: " + error)
+          setTasks([])
+        }
       }
     } catch (error) {
       console.error("获取任务列表失败:", error)
@@ -242,7 +274,7 @@ export default function TasksPage() {
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <CardTitle className="text-lg">{task.title}</CardTitle>
-            {getStatusBadge(task.status)}
+            {getStatusBadge(task.status || "")}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2 text-sm text-muted-foreground">
             <div className="flex items-center">
