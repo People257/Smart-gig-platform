@@ -514,14 +514,6 @@ func ApplyToTask(c *gin.Context) {
 		return
 	}
 
-	// 新增：判断申请人数是否已满，自动变更任务状态
-	var count int64
-	db.DB.Model(&models.TaskApplication{}).Where("task_id = ?", task.ID).Count(&count)
-	if int(count) >= int(task.Headcount) && task.Status == models.TaskStatusRecruiting {
-		task.Status = models.TaskStatusInProgress
-		db.DB.Save(&task)
-	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "任务申请成功"})
 }
 

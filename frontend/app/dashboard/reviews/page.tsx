@@ -42,8 +42,21 @@ export default function ReviewsPage() {
     try {
       // 获取待评价任务
       const pendingRes = await reviewsApi.getPendingReviews()
-      if (pendingRes.success && pendingRes.data) {
-        setPendingReviews(pendingRes.data.pending_reviews || [])
+      console.log("获取待评价返回数据:", pendingRes)
+      
+      // 看看数据在哪里，进行调试
+      if (pendingRes.success) {
+        if (pendingRes.data && 'pending_reviews' in pendingRes.data) {
+          // 数据在data.pending_reviews中
+          setPendingReviews(pendingRes.data.pending_reviews)
+        } else if ('pending_reviews' in (pendingRes as any)) {
+          // 数据直接在pending_reviews中
+          setPendingReviews((pendingRes as any).pending_reviews)
+        } else {
+          // 没找到数据，设为空数组
+          console.log("没有找到待评价数据")
+          setPendingReviews([])
+        }
       }
 
       // 获取我收到的评价

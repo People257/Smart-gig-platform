@@ -141,6 +141,11 @@ func migrateDB() {
 		&models.UserFavorite{},
 	)
 
+	// 执行自定义迁移
+	if err := MigrateReviews(); err != nil {
+		log.Printf("警告: Reviews表迁移失败: %v", err)
+	}
+
 	// 初始化模型间的关系
 	models.InitModels(DB)
 }
@@ -152,4 +157,102 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// MigrateReviews 执行reviews表的迁移
+func MigrateReviews() error {
+	log.Println("开始执行reviews表结构更新")
+
+	// 检查reviews表是否存在
+	var tables []string
+	if err := DB.Raw("SHOW TABLES LIKE 'reviews'").Pluck("Tables_in_zhlg", &tables).Error; err != nil {
+		return err
+	}
+
+	if len(tables) > 0 {
+		// 检查uuid列是否存在
+		var columns []struct {
+			Field string
+		}
+		if err := DB.Raw("SHOW COLUMNS FROM reviews LIKE 'uuid'").Scan(&columns).Error; err != nil {
+			return err
+		}
+
+		// 如果uuid列不存在，添加uuid列
+		if len(columns) == 0 {
+			log.Println("添加uuid列到reviews表")
+			if err := DB.Exec("ALTER TABLE reviews ADD COLUMN uuid VARCHAR(36) NOT NULL DEFAULT '' AFTER id").Error; err != nil {
+				return err
+			}
+
+			// 为现有记录生成UUID
+			if err := DB.Exec("UPDATE reviews SET uuid = UUID() WHERE uuid = ''").Error; err != nil {
+				return err
+			}
+
+			// 添加唯一索引
+			if err := DB.Exec("ALTER TABLE reviews ADD UNIQUE INDEX idx_reviews_uuid (uuid)").Error; err != nil {
+				return err
+			}
+		}
+
+		// 检查task_id列是否存在
+		columns = nil
+		if err := DB.Raw("SHOW COLUMNS FROM reviews LIKE 'task_id'").Scan(&columns).Error; err != nil {
+			return err
+		}
+
+		// 如果task_id列不存在，添加task_id列
+		if len(columns) == 0 {
+			log.Println("添加task_id列到reviews表")
+			if err := DB.Exec("ALTER TABLE reviews ADD COLUMN task_id INT UNSIGNED NOT NULL AFTER uuid").Error; err != nil {
+				return err
+			}
+		}
+
+		// 检查task_assignment_id列是否存在
+		columns = nil
+		if err := DB.Raw("SHOW COLUMNS FROM reviews LIKE 'task_assignment_id'").Scan(&columns).Error; err != nil {
+			return err
+		}
+
+		// 如果task_assignment_id列不存在，添加task_assignment_id列
+		if len(columns) == 0 {
+			log.Println("添加task_assignment_id列到reviews表")
+			if err := DB.Exec("ALTER TABLE reviews ADD COLUMN task_assignment_id INT UNSIGNED NOT NULL AFTER task_id").Error; err != nil {
+				return err
+			}
+		}
+
+		// 检查review_type列是否存在
+		columns = nil
+		if err := DB.Raw("SHOW COLUMNS FROM reviews LIKE 'review_type'").Scan(&columns).Error; err != nil {
+			return err
+		}
+
+		// 如果review_type列不存在，添加review_type列
+		if len(columns) == 0 {
+			log.Println("添加review_type列到reviews表")
+			if err := DB.Exec("ALTER TABLE reviews ADD COLUMN review_type VARCHAR(20) NOT NULL DEFAULT 'worker_to_employer' AFTER comment").Error; err != nil {
+				return err
+			}
+		}
+
+		// 检查updated_at列是否存在
+		columns = nil
+		if err := DB.Raw("SHOW COLUMNS FROM reviews LIKE 'updated_at'").Scan(&columns).Error; err != nil {
+			return err
+		}
+
+		// 如果updated_at列不存在，添加updated_at列
+		if len(columns) == 0 {
+			log.Println("添加updated_at列到reviews表")
+			if err := DB.Exec("ALTER TABLE reviews ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	log.Println("reviews表结构更新完成")
+	return nil
 }

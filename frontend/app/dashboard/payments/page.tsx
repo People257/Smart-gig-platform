@@ -196,9 +196,9 @@ export default function PaymentsPage() {
         <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
           <DialogTrigger asChild>
             <Button onClick={handleWithdraw} className="w-full sm:w-auto">
-              <Wallet className="mr-2 h-4 w-4" />
+          <Wallet className="mr-2 h-4 w-4" />
               <span>申请提现</span>
-            </Button>
+        </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -332,18 +332,18 @@ export default function PaymentsPage() {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Select value={dateFilter} onValueChange={setDateFilter}>
+                <Select value={dateFilter} onValueChange={setDateFilter}>
                     <SelectTrigger className="w-full sm:w-[130px]">
-                      <Calendar className="mr-2 h-4 w-4" />
-                      <SelectValue placeholder="时间范围" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部时间</SelectItem>
-                      <SelectItem value="today">今天</SelectItem>
-                      <SelectItem value="week">最近7天</SelectItem>
-                      <SelectItem value="month">最近30天</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Calendar className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder="时间范围" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部时间</SelectItem>
+                    <SelectItem value="today">今天</SelectItem>
+                    <SelectItem value="week">最近7天</SelectItem>
+                    <SelectItem value="month">最近30天</SelectItem>
+                  </SelectContent>
+                </Select>
                 </div>
               </div>
             </div>
@@ -413,7 +413,7 @@ export default function PaymentsPage() {
                 
                 {/* 移动端日期和ID */}
                 <div className="flex justify-between text-xs text-muted-foreground mt-1 sm:hidden">
-                  <div>{transaction.date}</div>
+                <div>{transaction.date}</div>
                   <div>{transaction.id}</div>
                 </div>
                 

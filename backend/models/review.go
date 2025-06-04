@@ -20,6 +20,7 @@ const (
 type Review struct {
 	ID               uint       `gorm:"primary_key" json:"id"`
 	UUID             string     `gorm:"type:varchar(36);unique_index;not null" json:"uuid"`
+	TaskID           uint       `gorm:"not null" json:"task_id"`
 	TaskAssignmentID uint       `gorm:"not null" json:"task_assignment_id"`
 	ReviewerID       uint       `gorm:"not null" json:"reviewer_id"`
 	RevieweeID       uint       `gorm:"not null" json:"reviewee_id"`

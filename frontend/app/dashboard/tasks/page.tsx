@@ -104,24 +104,24 @@ export default function TasksPage() {
         }
       } else {
         // 获取普通任务列表（所有任务或收藏任务）
-        // Build query parameters based on filters
-        const params: Record<string, string> = {}
-        
-        if (statusFilter !== "all") {
-          params.status = statusFilter
-        }
-        
+      // Build query parameters based on filters
+      const params: Record<string, string> = {}
+      
+      if (statusFilter !== "all") {
+        params.status = statusFilter
+      }
+      
         if (activeTab === "favorite" && user) {
-          params.favorite = "true"
-        }
-        
-        const { success, data, error } = await tasksApi.getTasks(params)
-        
-        if (success && data) {
-          setTasks(data.tasks || [])
-        } else {
-          toast.error("获取任务列表失败: " + error)
-          setTasks([])
+        params.favorite = "true"
+      }
+      
+      const { success, data, error } = await tasksApi.getTasks(params)
+      
+      if (success && data) {
+        setTasks(data.tasks || [])
+      } else {
+        toast.error("获取任务列表失败: " + error)
+        setTasks([])
         }
       }
     } catch (error) {
@@ -311,22 +311,22 @@ export default function TasksPage() {
                 </div>
               )}
               {task.location && (
-                <div className="flex items-center">
+              <div className="flex items-center">
                   <MapPin className="mr-1 h-4 w-4" />
                   <span>{task.location}</span>
-                </div>
+              </div>
               )}
               {(task.start_date || task.startDate) && (
-                <div className="flex items-center">
+              <div className="flex items-center">
                   <Calendar className="mr-1 h-4 w-4" />
                   <span>{task.start_date || task.startDate}</span>
-                </div>
+              </div>
               )}
               {task.budget_display && (
-                <div className="flex items-center">
+              <div className="flex items-center">
                   <Clock className="mr-1 h-4 w-4" />
                   <span>{task.budget_display}</span>
-                </div>
+              </div>
               )}
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end mt-2">

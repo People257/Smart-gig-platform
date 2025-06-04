@@ -203,8 +203,8 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>最近任务</CardTitle>
-                <CardDescription>查看您最近参与的任务</CardDescription>
+              <CardTitle>最近任务</CardTitle>
+              <CardDescription>查看您最近参与的任务</CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={fetchDashboardData} className="hidden sm:flex">
                 <RefreshCw className="mr-2 h-4 w-4" />

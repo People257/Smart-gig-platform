@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     // Cleanup
     return () => window.removeEventListener('resize', checkIfMobile)
   }, [])
-  
+
   useEffect(() => {
     // 仅在加载完成后判断认证状态
     if (!isLoading) {

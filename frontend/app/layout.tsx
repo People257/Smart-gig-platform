@@ -32,9 +32,9 @@ export default function RootLayout({
         <Suspense fallback={<LoadingFallback />}>
           <ClientAuthProvider>
             <Suspense fallback={<LoadingFallback />}>
-              {children}
+          {children}
             </Suspense>
-            <Toaster position="top-right" />
+          <Toaster position="top-right" />
           </ClientAuthProvider>
         </Suspense>
       </body>

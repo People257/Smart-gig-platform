@@ -501,9 +501,16 @@ export const reviewsApi = {
     return fetchApi<any>(`/reviews/user/${userUUID}`);
   },
   
-  getPendingReviews: async () => {
-    console.log("Calling getPendingReviews API");
-    return fetchApi<any>("/reviews/pending");
+  getPendingReviews: async (includeCompleted: boolean = false) => {
+    console.log("Calling getPendingReviews API", includeCompleted ? "with completed reviews" : "");
+    const url = includeCompleted ? "/reviews/pending?include_completed=true" : "/reviews/pending";
+    return fetchApi<{ 
+      success: boolean; 
+      pending_reviews: any[]; 
+      completed_reviews?: any[];
+      count: number;
+      completed_count?: number;
+    }>(url);
   },
   
   createReview: async (reviewData: {
