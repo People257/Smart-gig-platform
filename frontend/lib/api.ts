@@ -34,8 +34,22 @@ const setCookie = (name: string, value: string, days: number): void => {
   date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
   const expires = `expires=${date.toUTCString()}`;
 
-  // 移除SameSite和Secure设置，使Cookie在开发环境可靠工作
-  document.cookie = `${name}=${value};${expires};path=/`;
+  // 获取当前域名
+  const domain = window.location.hostname;
+  
+  console.log(`COOKIE DEBUG - Setting cookie for domain: ${domain}`);
+  console.log(`COOKIE DEBUG - Setting ${name} with value length: ${value.length}`);
+  console.log(`COOKIE DEBUG - Full cookie string: ${name}=${value.substring(0,10)}...;${expires};path=/;SameSite=Lax;domain=${domain}`);
+
+  // 设置cookie时指定当前域名
+  document.cookie = `${name}=${value};${expires};path=/;SameSite=Lax;domain=${domain}`;
+  
+  // 验证cookie是否设置成功
+  setTimeout(() => {
+    const checkCookie = getCookie(name);
+    console.log(`COOKIE VERIFY - After setting, cookie ${name} exists: ${checkCookie ? "YES" : "NO"}, length: ${checkCookie?.length || 0}`);
+  }, 100);
+  
   console.log(`Cookie set: ${name} with expiry ${date.toUTCString()}`);
 };
 
@@ -56,49 +70,96 @@ const getCookie = (name: string): string | null => {
 
 const deleteCookie = (name: string): void => {
   if (typeof window === 'undefined') return;
-  // 确保使用相同的path设置，不使用SameSite和Secure
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+  
+  console.log(`COOKIE DEBUG - Deleting cookie: ${name}`);
+  console.log("COOKIE DEBUG - Delete cookie stack trace:", new Error().stack);
+  
+  // 获取当前域名
+  const domain = window.location.hostname;
+  
+  // 确保使用相同的path和domain设置
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax;domain=${domain}`;
+  
+  // 验证cookie是否删除成功
+  setTimeout(() => {
+    const checkCookie = getCookie(name);
+    console.log(`COOKIE VERIFY - After deleting, cookie ${name} exists: ${checkCookie ? "YES" : "NO"}`);
+  }, 100);
+  
   console.log(`Cookie deleted: ${name}`);
 };
 
-// Function to get token from storage (both localStorage and cookie for transition)
+// 添加错误跟踪辅助函数
+function logTokenStatus(message: string) {
+  console.log(`TOKEN DEBUG - ${message}`);
+  console.log(`TOKEN DEBUG - Current cookie: ${getCookie(COOKIE_NAME) ? "存在" : "不存在"}`);
+  console.log(`TOKEN DEBUG - Current localStorage: ${typeof window !== 'undefined' && localStorage.getItem('auth_token') ? "存在" : "不存在"}`);
+}
+
+// Function to get token from storage (both localStorage and cookie)
 export const getAuthToken = (): string | null => {
+  logTokenStatus("获取认证Token");
+  
   // First try to get from cookie
   const cookieToken = getCookie(COOKIE_NAME);
-  if (cookieToken) return cookieToken;
+  if (cookieToken) {
+    console.log(`TOKEN DEBUG - 从cookie获取成功, 长度: ${cookieToken.length}`);
+    // 如果从cookie获取成功，确保localStorage也有一份
+    if (typeof window !== 'undefined' && !localStorage.getItem('auth_token')) {
+      localStorage.setItem('auth_token', cookieToken);
+      console.log('TOKEN DEBUG - 从cookie同步到localStorage');
+    }
+    return cookieToken;
+  }
   
-  // Fallback to localStorage for backward compatibility
+  // Fallback to localStorage
   if (typeof window !== 'undefined') {
     const localToken = localStorage.getItem('auth_token');
-    
-    // If found in localStorage, migrate it to cookie and remove from localStorage
     if (localToken) {
-      console.log("Migrating token from localStorage to cookie");
-      saveAuthToken(localToken);
-      localStorage.removeItem('auth_token');
-      return localToken;
+      // 如果在localStorage中找到但cookie中没有，同步到cookie
+      console.log(`TOKEN DEBUG - 从localStorage获取成功, 长度: ${localToken.length}, 同步到cookie`);
+      try {
+        setCookie(COOKIE_NAME, localToken, COOKIE_EXPIRES_DAYS);
+        return localToken;
+      } catch (e) {
+        console.error("TOKEN DEBUG - 同步到cookie失败:", e);
+        return localToken; // 即使同步失败也返回token
+      }
     }
   }
   
+  console.log("TOKEN DEBUG - 无法获取token");
   return null;
 };
 
-// Function to save token to cookie
+// Function to save token to storage (both cookie and localStorage)
 export const saveAuthToken = (token: string): void => {
+  // 保存到cookie
   setCookie(COOKIE_NAME, token, COOKIE_EXPIRES_DAYS);
-  console.log("Token saved to cookie, expires in", COOKIE_EXPIRES_DAYS, "days");
-};
-
-// Function to remove token from storage
-export const removeAuthToken = (): void => {
-  deleteCookie(COOKIE_NAME);
   
-  // Also clear from localStorage for good measure
+  // 同时保存到localStorage
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('auth_token');
+    localStorage.setItem('auth_token', token);
   }
   
-  console.log("Auth token removed from storage");
+  console.log("Token saved to both cookie and localStorage, expires in", COOKIE_EXPIRES_DAYS, "days");
+};
+
+// Function to remove token from all storage
+export const removeAuthToken = (): void => {
+  console.log("STORAGE DEBUG - Removing auth token from storage");
+  console.log("STORAGE DEBUG - Remove token stack trace:", new Error().stack);
+  
+  // 删除cookie
+  deleteCookie(COOKIE_NAME);
+  
+  // 删除localStorage
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+  }
+  
+  console.log("Auth token removed from all storage");
 };
 
 // 增强API错误类型
@@ -141,33 +202,36 @@ async function fetchApi<T>(
     // Add Authorization header if we have a token
     const token = getAuthToken();
     if (token) {
+      console.log(`API - Adding auth token to request: ${endpoint} (token length: ${token.length})`);
       fetchOptions.headers = {
         ...fetchOptions.headers,
         Authorization: `Bearer ${token}`
       };
+    } else {
+      console.log(`API - No auth token found for request: ${endpoint}`);
     }
     
-    console.log(`Request: ${options.method || 'GET'} ${url}`, {
+    console.log(`API Request: ${options.method || 'GET'} ${url}`, {
       headers: fetchOptions.headers,
       body: options.body ? JSON.parse(options.body as string) : undefined
     });
     
     const response = await fetch(url, fetchOptions);
-    console.log(`Response status: ${response.status} ${response.statusText}`);
+    console.log(`API Response status: ${response.status} ${response.statusText}`);
     
     // Handle special case for FormData (which is not JSON)
     let data;
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
-      console.log('Response data:', data);
+      console.log('API Response data:', data);
     } else {
       const text = await response.text();
       try {
         data = JSON.parse(text);
-        console.log('Response data (parsed from text):', data);
+        console.log('API Response data (parsed from text):', data);
       } catch (e) {
-        console.log('Response is not JSON:', text);
+        console.log('API Response is not JSON:', text);
         data = { success: response.ok, message: text };
       }
     }
@@ -181,7 +245,9 @@ async function fetchApi<T>(
       
       // 只在401 Unauthorized时才移除token
       if (response.status === 401 && token) {
-        console.log('Unauthorized error with token, removing token');
+        console.log('API - Unauthorized error with token, removing token');
+        console.log('API - Auth headers sent:', fetchOptions.headers);
+        console.log('API - Error response:', data);
         removeAuthToken();
       }
       
@@ -279,9 +345,9 @@ export const authApi = {
     return response;
   },
   
-  login: async (credentials: { username: string; password: string }) => {
+  login: async (credentials: { username: string; password: string; method: string }) => {
     console.log("Calling login API:", { username: credentials.username });
-    const response = await fetchApi<{ token: string }>("/auth/login", {
+    const response = await fetchApi<{ user: any; token: string }>("/auth/login", {
       method: "POST",
       body: JSON.stringify(credentials),
     });
@@ -460,6 +526,17 @@ export const dashboardApi = {
     console.log("Calling getDashboardData API");
     return fetchApi<any>("/dashboard");
   },
+  
+  getIncomeHistory: async () => {
+    console.log("Calling getIncomeHistory API");
+    return fetchApi<{
+      months: {
+        month: string;
+        amount: number;
+      }[];
+      user_type: string;
+    }>("/dashboard/income-history");
+  }
 };
 
 // Payments API

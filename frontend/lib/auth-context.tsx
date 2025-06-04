@@ -52,100 +52,241 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Check if user is authenticated on initial load
   useEffect(() => {
+    console.log("AUTH DEBUG - Initial auth check running on page load");
+    
+    // 在页面刷新或关闭前记录状态
+    const handleBeforeUnload = () => {
+      console.log("AUTH DEBUG - Page about to unload/refresh");
+      // 在这里不要执行会阻止页面刷新的操作
+      // 只记录调试信息
+    };
+    
+    // 记录页面加载/刷新事件
+    const recordPageLoad = () => {
+      console.log("AUTH DEBUG - Page loaded/refreshed at:", new Date().toISOString());
+      const token = getAuthToken();
+      console.log("AUTH DEBUG - Token after page load:", token ? "存在" : "不存在", 
+                 "长度:", token?.length || 0);
+    };
+    
+    // 监听页面刷新/关闭事件
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    // 记录页面加载
+    recordPageLoad();
+    
     const checkAuth = async () => {
       try {
         setIsLoading(true);
         
-        // 首先检查是否有token存在
-        const hasToken = !!getAuthToken();
-        if (!hasToken) {
-          console.log("No auth token found, skipping profile fetch");
-          setIsLoading(false);
-          return;
-        }
+        // Get auth token first and log its presence
+        const token = getAuthToken();
+        console.log("AUTH CHECK - Token found:", token ? "YES" : "NO", "Token length:", token?.length || 0);
         
-        console.log("Checking authentication status...");
-        try {
-          const response = await userApi.getProfile();
+        if (!token) {
+          console.log("AUTH CHECK - No auth token found, checking localStorage for cached user data");
           
-          if (response.data?.user) {
-            console.log("User is authenticated:", response.data.user);
-            try {
-              // 使用normalizeUserData函数处理用户数据
-              const normalizedUser = normalizeUserData(response.data.user);
+          // 尝试从localStorage恢复用户数据
+          try {
+            const cachedUserData = localStorage.getItem('user_data');
+            if (cachedUserData) {
+              console.log("AUTH CHECK - Found cached user data, attempting to use it");
+              const userData = JSON.parse(cachedUserData);
+              const normalizedUser = normalizeUserData(userData);
               
               if (normalizedUser) {
-                console.log("Normalized user data:", normalizedUser);
+                console.log("AUTH CHECK - Using cached user data temporarily while validating with backend");
+                // 临时设置用户，然后尝试重新获取新token
                 setUser(normalizedUser);
+                setIsAuthenticated(true);
+                
+                // 继续执行API调用以验证会话，但不立即退出函数
               } else {
-                console.error("User data missing required fields:", response.data.user);
-                // 尽量保持登录状态，简单使用原始数据
-                setUser(response.data.user as User);
+                console.log("AUTH CHECK - Cached user data invalid, clearing it");
+                localStorage.removeItem('user_data');
+                setUser(null);
+                setIsAuthenticated(false);
+                setIsLoading(false);
+                return;
               }
-            } catch (parseError) {
-              console.error("Error parsing user data:", parseError, response.data.user);
-              // 使用原始用户数据
-              setUser(response.data.user as User);
+            } else {
+              console.log("AUTH CHECK - No auth token found, not authenticated");
+              setUser(null);
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              return;
             }
-          } else {
-            console.log("User profile not found, but keeping token");
-            // 不提示错误，静默处理
-          }
-        } catch (profileError: any) {
-          console.error("Profile fetch error:", profileError);
-          
-          // 只在明确的401错误时才删除token
-          if (profileError.status === 401) {
-            console.log("Token invalid, removing it");
-            removeAuthToken();
-            // 不显示toast提示，避免用户体验不佳
-          } else {
-            console.log("Network or server error, keeping token and user state");
-            // 临时网络问题或服务器错误，不删除token
+          } catch (e) {
+            console.error("AUTH CHECK - Error processing cached user data:", e);
+            localStorage.removeItem('user_data');
+            setUser(null);
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            return;
           }
         }
-      } catch (error: any) {
-        console.error("Auth check failed (outer):", error);
-        // 这里不删除token，因为可能是程序错误而非权限问题
+        
+        console.log("AUTH CHECK - Attempting to verify token with backend...");
+        try {
+          console.log("AUTH CHECK - Calling getProfile API");
+          const response = await userApi.getProfile();
+          console.log("AUTH CHECK - API response:", response);
+          
+          if (response.success && response.data) {
+            console.log("AUTH CHECK - Authentication successful, user data:", response.data);
+            const normalizedUser = normalizeUserData(response.data);
+            
+            if (normalizedUser) {
+              console.log("AUTH CHECK - User data normalized successfully");
+              
+              // 主动更新token持久存储
+              const token = getAuthToken();
+              if (token) {
+                console.log("AUTH CHECK - Re-saving token to ensure persistence");
+                saveAuthToken(token); 
+              }
+              
+              setUser(normalizedUser);
+              setIsAuthenticated(true);
+              
+              // 将用户信息也保存到localStorage以增强持久性
+              try {
+                localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+                console.log("AUTH CHECK - User data saved to localStorage");
+              } catch (err) {
+                console.error("AUTH CHECK - Failed to save user data to localStorage", err);
+              }
+            } else {
+              console.error("AUTH CHECK - Failed to normalize user data");
+              setUser(null);
+              setIsAuthenticated(false);
+              // 删除无效的token
+              removeAuthToken();
+              console.log("AUTH CHECK - Token removed due to normalization failure");
+            }
+          } else {
+            console.log("AUTH CHECK - No user data returned from profile API or response not successful");
+            console.log("AUTH CHECK - Response details:", JSON.stringify(response));
+            setUser(null);
+            setIsAuthenticated(false);
+            // 删除无效的token
+            removeAuthToken();
+            console.log("AUTH CHECK - Token removed due to invalid API response");
+          }
+        } catch (error) {
+          console.error("AUTH CHECK - Profile API call failed:", error);
+          setUser(null);
+          setIsAuthenticated(false);
+          // 删除无效的token
+          removeAuthToken();
+          console.log("AUTH CHECK - Token removed due to API error");
+        }
+      } catch (error) {
+        console.error("AUTH CHECK - Authentication check overall error:", error);
+        setUser(null);
+        setIsAuthenticated(false);
+        removeAuthToken();
       } finally {
         setIsLoading(false);
       }
     };
 
+    console.log("AUTH CHECK - Starting authentication check on page load/refresh");
     checkAuth();
+    
+    // Set up a periodic refresh to keep the session alive
+    const refreshInterval = setInterval(() => {
+      const token = getAuthToken();
+      if (token) {
+        console.log("TOKEN REFRESH - Starting periodic token refresh");
+        userApi.getProfile()
+          .then(response => {
+            if (!response.success || !response.data) {
+              console.log("TOKEN REFRESH - Failed: Invalid response", response);
+              setUser(null);
+              setIsAuthenticated(false);
+              removeAuthToken();
+            } else {
+              console.log("TOKEN REFRESH - Successful");
+            }
+          })
+          .catch(err => {
+            console.log("TOKEN REFRESH - Failed with error:", err);
+            // 如果API调用失败，清除认证状态
+            setUser(null);
+            setIsAuthenticated(false);
+            removeAuthToken();
+          });
+      } else {
+        console.log("TOKEN REFRESH - Skipped, no token found");
+      }
+    }, 5 * 60 * 1000); // Refresh every 5 minutes
+    
+    // 在组件卸载时移除事件监听
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      clearInterval(refreshInterval);
+    };
   }, []);
 
   // Login function that handles both username and phone methods
   const login = async (loginData: any): Promise<User> => {
     try {
       setIsLoading(true);
-      console.log("Login attempt with data:", loginData);
-      
       const response = await authApi.login(loginData);
-      console.log("Login response:", response);
       
-      if (response.data?.user) {
-        // 使用normalizeUserData处理用户数据
-        const normalizedUser = normalizeUserData(response.data.user);
+      if (response.success && response.data) {
+        // Auth token is already saved by the API function
         
+        // 修复: 用户数据直接在response.data中，不再需要检查response.data.user
+        console.log("LOGIN - User data received:", response.data);
+        const normalizedUser = normalizeUserData(response.data);
         if (normalizedUser) {
           setUser(normalizedUser);
-          console.log("Login successful, normalized user:", normalizedUser);
+          setIsAuthenticated(true);
           
-          toast.success(response.message || "Login successful");
+          // 保存用户数据到localStorage
+          try {
+            localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+          } catch (e) {
+            console.error("Failed to save user data to localStorage", e);
+          }
+          
           return normalizedUser;
-        } else {
-          throw new Error("用户数据格式无效，请联系管理员");
         }
-      } 
-      
-      throw new Error(response.error || "Login failed");
+        
+        // 如果无法正常化用户数据，尝试重新获取
+        try {
+          const profileResponse = await userApi.getProfile();
+          if (profileResponse.success && profileResponse.data) {
+            const normalizedUser = normalizeUserData(profileResponse.data);
+            if (normalizedUser) {
+              setUser(normalizedUser);
+              setIsAuthenticated(true);
+              
+              // 保存用户数据到localStorage
+              try {
+                localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+              } catch (e) {
+                console.error("Failed to save user data to localStorage", e);
+              }
+              
+              return normalizedUser;
+            }
+          }
+        } catch (profileError) {
+          console.error("Failed to fetch profile after login:", profileError);
+        }
+        
+        throw new Error("无法获取用户信息");
+      } else {
+        throw new Error(response.error || "登录失败");
+      }
     } catch (error: any) {
-      console.error("Login failed:", error);
-      toast.error(error.message || "Login failed");
+      console.error("Login error:", error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -156,39 +297,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (registerData: any): Promise<User> => {
     try {
       setIsLoading(true);
-      console.log("Register attempt with data:", registerData);
       
-      // Ensure method is valid
-      if (!["username", "phone", "email"].includes(registerData.method)) {
-        throw new Error("Invalid registration method. Must be 'username', 'phone', or 'email'");
-      }
+      // 确保注册方式为username
+      const finalRegisterData = {
+        ...registerData,
+        method: "username",
+      };
       
-      const response = await authApi.register(registerData);
-      console.log("Register response:", response);
+      const response = await authApi.register(finalRegisterData);
       
-      if (response.data?.token) {
-        saveAuthToken(response.data.token);
-      }
-      
-      if (response.data?.user) {
-        // 使用normalizeUserData处理用户数据
-        const normalizedUser = normalizeUserData(response.data.user);
+      if (response.success && response.data) {
+        // Auth token is already saved by the API function
         
+        // 修复: 用户数据直接在response.data中，不再需要检查response.data.user
+        console.log("REGISTER - User data received:", response.data);
+        const normalizedUser = normalizeUserData(response.data);
         if (normalizedUser) {
           setUser(normalizedUser);
-          console.log("Registration successful, normalized user:", normalizedUser);
+          setIsAuthenticated(true);
           
-          toast.success(response.message || "Registration successful");
+          // 保存用户数据到localStorage
+          try {
+            localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+          } catch (e) {
+            console.error("Failed to save user data to localStorage", e);
+          }
+          
           return normalizedUser;
-        } else {
-          throw new Error("注册成功但用户数据格式无效，请联系管理员");
         }
+        
+        // 如果无法正常化用户数据，尝试重新获取
+        try {
+          const profileResponse = await userApi.getProfile();
+          if (profileResponse.success && profileResponse.data) {
+            const normalizedUser = normalizeUserData(profileResponse.data);
+            if (normalizedUser) {
+              setUser(normalizedUser);
+              setIsAuthenticated(true);
+              
+              // 保存用户数据到localStorage
+              try {
+                localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+              } catch (e) {
+                console.error("Failed to save user data to localStorage", e);
+              }
+              
+              return normalizedUser;
+            }
+          }
+        } catch (profileError) {
+          console.error("Failed to fetch profile after registration:", profileError);
+        }
+        
+        throw new Error("无法获取用户信息");
+      } else {
+        throw new Error(response.error || "注册失败");
       }
-      
-      throw new Error(response.error || "Registration failed");
     } catch (error: any) {
-      console.error("Registration failed:", error);
-      toast.error(error.message || "Registration failed");
+      console.error("Registration error:", error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -199,20 +365,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       setIsLoading(true);
-      console.log("Logout attempt");
-      const response = await authApi.logout();
-      console.log("Logout response:", response);
-      
-      setUser(null);
-      removeAuthToken(); // 确保登出时移除token
-      toast.success(response.message || "Logged out successfully");
+      // Call API to logout (invalidate token on server)
+      await authApi.logout();
     } catch (error) {
-      console.error("Logout failed:", error);
-      toast.error("Logout failed");
-      // 即使API调用失败，也要移除token并清除用户状态
+      console.error("Logout error:", error);
+      // Continue with logout even if API fails
+    } finally {
+      // Remove token and clear user data
       removeAuthToken();
       setUser(null);
-    } finally {
+      setIsAuthenticated(false);
       setIsLoading(false);
     }
   };
@@ -251,7 +413,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated,
         login,
         register,
         logout,

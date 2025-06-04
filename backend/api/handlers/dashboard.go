@@ -71,30 +71,6 @@ func GetDashboardData(c *gin.Context) {
 			Total float64
 		}
 
-		// 先检查transaction表是否存在以及是否有数据
-		var transactionCount int64
-		if err := db.DB.Table("transactions").Count(&transactionCount).Error; err != nil {
-			log.Printf("[GetDashboardData] 查询transaction表失败: %v", err)
-		} else {
-			log.Printf("[GetDashboardData] transaction表中共有 %d 条记录", transactionCount)
-		}
-
-		// 检查相关记录是否存在
-		var userTransactionCount int64
-		if err := db.DB.Table("transactions").Where("user_id = ?", userID).Count(&userTransactionCount).Error; err != nil {
-			log.Printf("[GetDashboardData] 查询用户transaction记录失败: %v", err)
-		} else {
-			log.Printf("[GetDashboardData] 用户ID=%v的transaction表中共有 %d 条记录", userID, userTransactionCount)
-		}
-
-		// 添加示例数据用于测试
-		if userTransactionCount == 0 && transactionCount == 0 {
-			log.Printf("[GetDashboardData] 没有任何交易记录，添加一条示例记录用于显示")
-			// 添加mock数据只用于示例显示
-			monthlyIncome = 1500.00
-			return
-		}
-
 		// 查询本月收入
 		query := db.DB.Model(&models.Transaction{}).
 			Select("COALESCE(SUM(amount), 0) as Total").
@@ -119,9 +95,9 @@ func GetDashboardData(c *gin.Context) {
 
 			if err2 != nil {
 				log.Printf("[GetDashboardData] 原始SQL查询月收入也失败: %v", err2)
-				// 提供默认值
-				monthlyIncome = 1500.00
-				log.Printf("[GetDashboardData] 使用默认收入值: %v", monthlyIncome)
+				// 不再提供默认值，保持为0
+				monthlyIncome = 0
+				log.Printf("[GetDashboardData] 没有收入数据，设置为0")
 			} else {
 				monthlyIncome = incomeStats.Total
 				log.Printf("[GetDashboardData] 使用原始SQL查询的月收入: %v", monthlyIncome)
@@ -131,9 +107,24 @@ func GetDashboardData(c *gin.Context) {
 			log.Printf("[GetDashboardData] 使用ORM查询的月收入: %v", monthlyIncome)
 		}
 	} else if userType == "employer" {
-		// 对于雇主，简单提供默认值以便展示效果
-		monthlyIncome = 2000.00
-		log.Printf("[GetDashboardData] 雇主类型，使用默认支出值: %v", monthlyIncome)
+		var paymentStats struct {
+			Total float64
+		}
+
+		// 查询本月支出
+		query := db.DB.Model(&models.Transaction{}).
+			Select("COALESCE(SUM(amount), 0) as Total").
+			Where("user_id = ? AND type = ? AND created_at >= ? AND status = ?",
+				userID, models.TransactionTypeEarning, startOfMonth, models.TransactionStatusCompleted)
+
+		if err := query.Scan(&paymentStats).Error; err != nil {
+			log.Printf("[GetDashboardData] 查询月支出失败: %v", err)
+			// 不提供默认值，保持为0
+			monthlyIncome = 0
+		} else {
+			monthlyIncome = paymentStats.Total
+			log.Printf("[GetDashboardData] 查询月支出: %v", monthlyIncome)
+		}
 	}
 
 	// 获取评分信息
@@ -326,5 +317,115 @@ func GetAdminDashboard(c *gin.Context) {
 			"cache_hits":              12567,
 			"api_requests_per_minute": 128,
 		},
+	})
+}
+
+// GetIncomeHistory 返回用户最近6个月的收入/支出历史数据
+func GetIncomeHistory(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+
+	// 从context中获取用户类型
+	userTypeValue, exists := c.Get("user_type")
+	var userType string
+
+	if exists && userTypeValue != nil {
+		userType = userTypeValue.(string)
+	} else {
+		// 如果用户类型不存在，从数据库中获取
+		var user models.User
+		if err := db.DB.Select("user_type").First(&user, userID).Error; err != nil {
+			log.Printf("[GetIncomeHistory] 无法获取用户类型: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户数据失败"})
+			return
+		}
+		userType = string(user.UserType)
+	}
+
+	log.Printf("[GetIncomeHistory] 获取收入历史数据，用户ID=%v, 类型=%v", userID, userType)
+
+	// 获取当前月份和前5个月，共6个月的数据
+	now := time.Now()
+	var monthlyData []gin.H
+
+	for i := 5; i >= 0; i-- {
+		// 计算月份
+		currentMonth := time.Date(now.Year(), now.Month()-time.Month(i), 1, 0, 0, 0, 0, now.Location())
+		monthLabel := currentMonth.Format("2006-01")
+
+		// 计算月底
+		nextMonth := currentMonth.AddDate(0, 1, 0)
+		monthEnd := nextMonth.Add(-time.Second)
+
+		var monthlyIncome float64
+		var transactionCount int64
+
+		// 对于工人，统计收入; 对于雇主，统计支出
+		if userType == "worker" {
+			// 检查当月交易记录数量
+			if err := db.DB.Model(&models.Transaction{}).
+				Where("user_id = ? AND type = ? AND created_at BETWEEN ? AND ? AND status = ?",
+					userID, models.TransactionTypeEarning, currentMonth, monthEnd, models.TransactionStatusCompleted).
+				Count(&transactionCount).Error; err != nil {
+				log.Printf("[GetIncomeHistory] 查询交易记录数量失败: %v", err)
+				transactionCount = 0
+			}
+
+			// 如果存在交易记录，计算月收入总额
+			if transactionCount > 0 {
+				var incomeStats struct {
+					Total float64
+				}
+				if err := db.DB.Model(&models.Transaction{}).
+					Select("COALESCE(SUM(amount), 0) as Total").
+					Where("user_id = ? AND type = ? AND created_at BETWEEN ? AND ? AND status = ?",
+						userID, models.TransactionTypeEarning, currentMonth, monthEnd, models.TransactionStatusCompleted).
+					Scan(&incomeStats).Error; err != nil {
+					log.Printf("[GetIncomeHistory] 查询月收入失败: %v", err)
+				} else {
+					monthlyIncome = incomeStats.Total
+				}
+			}
+		} else if userType == "employer" {
+			// 雇主支出逻辑类似，但使用支出类型的交易
+			// 检查当月交易记录数量
+			if err := db.DB.Model(&models.Transaction{}).
+				Where("user_id = ? AND type = ? AND created_at BETWEEN ? AND ? AND status = ?",
+					userID, models.TransactionTypeEarning, currentMonth, monthEnd, models.TransactionStatusCompleted).
+				Count(&transactionCount).Error; err != nil {
+				log.Printf("[GetIncomeHistory] 查询交易记录数量失败: %v", err)
+				transactionCount = 0
+			}
+
+			// 如果存在交易记录，计算月支出总额
+			if transactionCount > 0 {
+				var paymentStats struct {
+					Total float64
+				}
+				if err := db.DB.Model(&models.Transaction{}).
+					Select("COALESCE(SUM(amount), 0) as Total").
+					Where("user_id = ? AND type = ? AND created_at BETWEEN ? AND ? AND status = ?",
+						userID, models.TransactionTypeEarning, currentMonth, monthEnd, models.TransactionStatusCompleted).
+					Scan(&paymentStats).Error; err != nil {
+					log.Printf("[GetIncomeHistory] 查询月支出失败: %v", err)
+				} else {
+					monthlyIncome = paymentStats.Total
+				}
+			}
+		}
+
+		// 添加到结果数组
+		monthlyData = append(monthlyData, gin.H{
+			"month":  monthLabel,
+			"amount": monthlyIncome,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"months":    monthlyData,
+		"user_type": userType,
 	})
 }

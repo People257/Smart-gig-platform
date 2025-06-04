@@ -70,6 +70,7 @@ func SetupRoutes(r *gin.Engine) {
 	dashboard := api.Group("/dashboard")
 	{
 		dashboard.GET("", middlewares.AuthRequired(), handlers.GetDashboardData)
+		dashboard.GET("/income-history", middlewares.AuthRequired(), handlers.GetIncomeHistory)
 	}
 
 	// Payment routes

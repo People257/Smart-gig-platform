@@ -1,0 +1,285 @@
+.reviewsContainer {
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.pageTitle {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: #333;
+}
+
+.reviewTabs {
+  margin-bottom: 24px;
+}
+
+.reviewsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.reviewCard {
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background-color: white;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.reviewCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.reviewHeader {
+  margin-bottom: 12px;
+}
+
+.taskTitle {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 8px 0;
+  color: #333;
+}
+
+.completedDate {
+  font-size: 12px;
+  color: #888;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.userAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-right: 12px;
+}
+
+.userAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+  color: #666;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.userDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.userName {
+  font-weight: 500;
+  color: #333;
+}
+
+.userType {
+  font-size: 12px;
+  color: #666;
+}
+
+.reviewResult {
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+
+.rating {
+  margin-bottom: 8px;
+}
+
+.star {
+  margin-right: 4px;
+  font-size: 16px;
+}
+
+.selectableStar {
+  cursor: pointer;
+  margin-right: 4px;
+  font-size: 24px;
+  transition: transform 0.2s;
+}
+
+.selectableStar:hover {
+  transform: scale(1.2);
+}
+
+.reviewComment {
+  font-style: italic;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.reviewDate {
+  font-size: 12px;
+  color: #888;
+}
+
+.reviewActions {
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.reviewButton {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.reviewButton:hover {
+  background-color: #40a9ff;
+}
+
+.loadingContainer, .emptyContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #888;
+  font-size: 16px;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+}
+
+.modalOverlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modalContent {
+  width: 80%;
+  max-width: 500px;
+  background-color: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background-color: #f9f9f9;
+  border-bottom: 1px solid #eee;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+}
+
+.modalBody {
+  padding: 16px;
+}
+
+.taskInfo {
+  margin-bottom: 16px;
+}
+
+.taskInfo h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.ratingSection {
+  margin-bottom: 16px;
+}
+
+.ratingSection label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.ratingStars {
+  display: flex;
+}
+
+.commentSection label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.commentInput {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
+  background-color: #f9f9f9;
+  border-top: 1px solid #eee;
+}
+
+.cancelButton {
+  background-color: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 8px 16px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.submitButton {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+} 

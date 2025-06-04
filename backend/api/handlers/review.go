@@ -156,7 +156,7 @@ func CreateReview(c *gin.Context) {
 		reviewee.ID, reviewee.UUID, reviewee.Name)
 
 	// 检查用户身份
-	userType, _ := c.Get("userType")
+	userType, _ := c.Get("user_type")
 
 	// 检查评价权限
 	if userType == "employer" {

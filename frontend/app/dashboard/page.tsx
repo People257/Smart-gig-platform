@@ -11,6 +11,26 @@ import { dashboardApi } from "@/lib/api"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { Badge } from "@/components/ui/badge"
+import { 
+  Chart as ChartJS, 
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend 
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+// 注册Chart.js组件
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 // 定义仪表盘数据类型
 interface DashboardData {
@@ -32,9 +52,20 @@ interface DashboardData {
   }[];
 }
 
+// 定义收入历史数据类型
+interface IncomeHistoryData {
+  months: {
+    month: string;
+    amount: number;
+  }[];
+  user_type: string;
+}
+
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
+  const [incomeHistory, setIncomeHistory] = useState<IncomeHistoryData | null>(null)
+  const [isLoadingIncomeHistory, setIsLoadingIncomeHistory] = useState(true)
   const { user } = useAuth();
 
   // 提取函数到组件级别，使其可在其他地方调用
@@ -55,9 +86,28 @@ export default function DashboardPage() {
       setIsLoading(false)
     }
   }
+  
+  // 获取收入历史数据
+  const fetchIncomeHistory = async () => {
+    try {
+      setIsLoadingIncomeHistory(true)
+      const { success, data, error } = await dashboardApi.getIncomeHistory()
+      
+      if (success && data) {
+        setIncomeHistory(data)
+      } else {
+        console.error("获取收入历史数据失败:", error)
+      }
+    } catch (error) {
+      console.error('获取收入历史数据失败:', error)
+    } finally {
+      setIsLoadingIncomeHistory(false)
+    }
+  }
 
   useEffect(() => {
     fetchDashboardData()
+    fetchIncomeHistory()
   }, [])
 
   // 格式化任务状态展示
@@ -89,6 +139,82 @@ export default function DashboardPage() {
     
     return variantMap[status] || "default"
   }
+
+  // 图表配置
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top' as const,
+      },
+      title: {
+        display: false,
+      },
+    },
+  };
+  
+  // 准备图表数据
+  const prepareChartData = () => {
+    if (!incomeHistory || !incomeHistory.months || incomeHistory.months.length === 0) {
+      return {
+        labels: [],
+        datasets: [
+          {
+            label: user?.user_type === "worker" ? '月收入 (¥)' : '月支出 (¥)',
+            data: [],
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1,
+          }
+        ]
+      };
+    }
+    
+    // 检查是否至少有一个月有非零数据
+    const hasData = incomeHistory.months.some(month => month.amount > 0);
+    if (!hasData) {
+      return {
+        labels: [],
+        datasets: [
+          {
+            label: user?.user_type === "worker" ? '月收入 (¥)' : '月支出 (¥)',
+            data: [],
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1,
+          }
+        ]
+      };
+    }
+    
+    // 基于用户类型设置图表颜色
+    const chartColor = user?.user_type === "worker" ? "rgba(34, 197, 94, 0.6)" : "rgba(239, 68, 68, 0.6)";
+    const chartBorderColor = user?.user_type === "worker" ? "rgba(34, 197, 94, 1)" : "rgba(239, 68, 68, 1)";
+    
+    // 从后端数据中提取月份和金额
+    const labels = incomeHistory.months.map(item => {
+      // 将2023-01格式的日期转换为1月
+      const [year, month] = item.month.split('-');
+      return `${month}月`;
+    });
+    
+    const amounts = incomeHistory.months.map(item => item.amount);
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: user?.user_type === "worker" ? '月收入 (¥)' : '月支出 (¥)',
+          data: amounts,
+          backgroundColor: chartColor,
+          borderColor: chartBorderColor,
+          borderWidth: 1,
+        }
+      ]
+    };
+  };
 
   return (
     <div className="space-y-6">
@@ -324,17 +450,31 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle>收入统计</CardTitle>
-            <CardDescription>查看您的收入趋势</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>收入统计</CardTitle>
+              <CardDescription>查看您的收入趋势</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchIncomeHistory} className="hidden sm:flex">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              刷新
+            </Button>
           </CardHeader>
-          <CardContent className="h-[200px] flex items-center justify-center">
-            {isLoading ? (
+          <CardContent className="h-[300px]">
+            {isLoading || isLoadingIncomeHistory ? (
               <Skeleton className="h-full w-full" />
-            ) : (
-              <div className="flex flex-col items-center text-center">
+            ) : (!incomeHistory || !incomeHistory.months.some(month => month.amount > 0)) ? (
+              <div className="flex flex-col items-center justify-center h-full">
                 <BarChart className="h-16 w-16 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">暂无收入数据</p>
+                <p className="text-sm text-muted-foreground font-medium">暂无收入记录</p>
+                <p className="text-xs text-muted-foreground mt-1">当前没有任何交易记录</p>
+              </div>
+            ) : (
+              <div className="h-full w-full">
+                <Bar 
+                  options={chartOptions} 
+                  data={prepareChartData()} 
+                />
               </div>
             )}
           </CardContent>

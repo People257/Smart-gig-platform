@@ -97,11 +97,6 @@ export function Sidebar() {
       label: "管理后台",
       icon: <BarChartIcon className="h-5 w-5" />,
       restrictTo: ["admin"]
-    },
-    {
-      href: "/api-test",
-      label: "API测试",
-      icon: <FileTextIcon className="h-5 w-5" />
     }
   ]
   
