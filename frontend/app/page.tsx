@@ -1,10 +1,12 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Briefcase, Clock, Shield, Users } from "lucide-react"
+import { ApiUrlDebugger } from "@/components/ApiUrlDebugger"
 
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen">
+      <ApiUrlDebugger />
       <header className="border-b">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-xl">

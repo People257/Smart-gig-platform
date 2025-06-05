@@ -3,6 +3,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'sonner'
 import { ClientAuthProvider } from '@/lib/client-auth-provider'
+import { ApiDebug } from '@/components/debug/ApiDebug'
+
+// 导入API请求拦截补丁
+import '@/lib/api-patch'
 
 export const metadata: Metadata = {
   title: 'ZHLG Platform',
@@ -32,9 +36,10 @@ export default function RootLayout({
         <Suspense fallback={<LoadingFallback />}>
           <ClientAuthProvider>
             <Suspense fallback={<LoadingFallback />}>
-          {children}
+              {children}
             </Suspense>
-          <Toaster position="top-right" />
+            <Toaster position="top-right" />
+            <ApiDebug />
           </ClientAuthProvider>
         </Suspense>
       </body>

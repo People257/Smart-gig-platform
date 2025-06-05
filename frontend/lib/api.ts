@@ -1,7 +1,15 @@
 import { toast } from "sonner";
+import { getApiBaseUrl, getApiDomain } from "../config/api";
+import { API_SERVER_URL } from "./api-patch";
 
-// Base API URL - configure based on environment
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+// 调试 API URL
+console.log("API_DEBUG - process.env.NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
+console.log("API_DEBUG - window?.location?.hostname:", typeof window !== 'undefined' ? window.location.hostname : "server-side");
+
+// 强制使用服务器地址 - 直接使用API_SERVER_URL
+let API_BASE_URL = API_SERVER_URL;
+
+console.log("API_CRITICAL - 强制使用服务器URL:", API_BASE_URL);
 
 // Debug API URL
 console.log("Initialized API with URL:", API_BASE_URL);
@@ -34,14 +42,14 @@ const setCookie = (name: string, value: string, days: number): void => {
   date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
   const expires = `expires=${date.toUTCString()}`;
 
-  // 获取当前域名
-  const domain = window.location.hostname;
+  // 使用API域名来设置cookie
+  const domain = getApiDomain();
   
   console.log(`COOKIE DEBUG - Setting cookie for domain: ${domain}`);
   console.log(`COOKIE DEBUG - Setting ${name} with value length: ${value.length}`);
   console.log(`COOKIE DEBUG - Full cookie string: ${name}=${value.substring(0,10)}...;${expires};path=/;SameSite=Lax;domain=${domain}`);
 
-  // 设置cookie时指定当前域名
+  // 设置cookie时指定API域名
   document.cookie = `${name}=${value};${expires};path=/;SameSite=Lax;domain=${domain}`;
   
   // 验证cookie是否设置成功
@@ -74,8 +82,8 @@ const deleteCookie = (name: string): void => {
   console.log(`COOKIE DEBUG - Deleting cookie: ${name}`);
   console.log("COOKIE DEBUG - Delete cookie stack trace:", new Error().stack);
   
-  // 获取当前域名
-  const domain = window.location.hostname;
+  // 使用API域名来删除cookie
+  const domain = getApiDomain();
   
   // 确保使用相同的path和domain设置
   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax;domain=${domain}`;
